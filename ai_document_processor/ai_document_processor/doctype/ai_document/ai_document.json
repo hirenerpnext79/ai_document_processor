@@ -36,6 +36,7 @@
   {
    "fieldname": "provider",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Provider",
    "options": "AI Provider"
   },
@@ -49,6 +50,7 @@
    "default": "Pending",
    "fieldname": "status",
    "fieldtype": "Select",
+   "in_list_view": 1,
    "label": "Status",
    "no_copy": 1,
    "options": "Pending\nProcessing\nCompleted\nFailed",
@@ -113,7 +115,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-21 14:13:47.597082",
+ "modified": "2026-07-22 15:21:40.169873",
  "modified_by": "hns@gmail.com",
  "module": "AI Document Processor",
  "name": "AI Document",
