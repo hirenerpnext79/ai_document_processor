@@ -25,7 +25,7 @@ class OpenAIService:
             "response_format": {"type": "json_object"}
         }
         
-        response = requests.post(f"{self.base_url}/chat/completions", headers=headers, json=data)
-        response.raise_for_status()
-        
-        return response.json()['choices'][0]['message']['content']
+        result = response.json()
+        text_content = result['choices'][0]['message']['content']
+        usage = result.get('usage', {})
+        return text_content, usage

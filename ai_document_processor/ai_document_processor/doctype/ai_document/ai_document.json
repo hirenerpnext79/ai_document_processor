@@ -13,6 +13,7 @@
   "status",
   "extracted_text",
   "ai_response",
+  "usage_token",
   "generated_hashtags",
   "generated_keywords",
   "seo_title",
@@ -110,13 +111,20 @@
    "label": "Error Log",
    "no_copy": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "usage_token",
+   "fieldtype": "Long Text",
+   "label": "Usage Token",
+   "no_copy": 1,
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-22 15:21:40.169873",
- "modified_by": "hns@gmail.com",
+ "modified": "2026-07-24 16:43:19.217352",
+ "modified_by": "hirenerpnext79@gmail.com",
  "module": "AI Document Processor",
  "name": "AI Document",
  "owner": "Administrator",

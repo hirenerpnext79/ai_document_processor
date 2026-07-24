@@ -27,9 +27,11 @@ class GeminiService:
                 "response_mime_type": "application/json"
             }
         }
-        print(data)
+
         response = requests.post(url, headers=headers, json=data)
         response.raise_for_status()
         
         result = response.json()
-        return result['candidates'][0]['content']['parts'][0]['text']
+        text_content = result['candidates'][0]['content']['parts'][0]['text']
+        usage = result.get('usageMetadata', {})
+        return text_content, usage
