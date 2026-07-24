@@ -1,0 +1,68 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"FXlxr_0o7A\",\"type\":\"card\",\"data\":{\"card_name\":\"AI Document Process\",\"col\":4}}]",
+ "creation": "2026-07-24 14:45:58.050368",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "AI Document Process",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "AI Document Process",
+   "link_count": 3,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "AI Provider",
+   "link_count": 0,
+   "link_to": "AI Provider",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "AI Document",
+   "link_count": 0,
+   "link_to": "AI Document",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "AI Prompt",
+   "link_count": 0,
+   "link_to": "AI Prompt",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-07-24 14:50:02.355063",
+ "modified_by": "hirenerpnext79@gmail.com",
+ "module": "AI Document Processor",
+ "name": "AI Document Process",
+ "number_cards": [],
+ "owner": "hirenerpnext79@gmail.com",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 29.0,
+ "shortcuts": [],
+ "title": "AI Document Process"
+}
