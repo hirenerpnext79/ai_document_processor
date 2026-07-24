@@ -12,8 +12,13 @@ def validate_doc(doc):
     if not doc.prompt:
         frappe.throw(_("Please select an AI Prompt."))
 
-def process_ai_response(doc, ai_response_text):
+def process_ai_response(doc, ai_response_text, usage_metadata=None):
     doc.ai_response = ai_response_text
+    if usage_metadata:
+        if isinstance(usage_metadata, (dict, list)):
+            doc.usage_token = json.dumps(usage_metadata, indent=2)
+        else:
+            doc.usage_token = str(usage_metadata)
     try:
         parsed = json.loads(ai_response_text)
         doc.seo_title = parsed.get("title", doc.seo_title)
@@ -44,8 +49,8 @@ def generate_response(docname, user=None):
         provider = frappe.get_doc("AI Provider", doc.provider)
         prompt = frappe.get_doc("AI Prompt", doc.prompt)
         
-        ai_response_text = generate(provider, prompt, doc.extracted_text)
-        process_ai_response(doc, ai_response_text)
+        ai_response_text, usage_metadata = generate(provider, prompt, doc.extracted_text)
+        process_ai_response(doc, ai_response_text, usage_metadata)
         
         doc.status = "Completed"
         doc.save(ignore_permissions=True)

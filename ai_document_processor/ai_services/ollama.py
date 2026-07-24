@@ -22,7 +22,11 @@ class OllamaService:
             "stream": False
         }
         
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
-        
-        return response.json()['response']
+        result = response.json()
+        text_content = result.get('response', '')
+        usage = {
+            "prompt_eval_count": result.get("prompt_eval_count"),
+            "eval_count": result.get("eval_count"),
+            "total_duration": result.get("total_duration")
+        }
+        return text_content, usage
