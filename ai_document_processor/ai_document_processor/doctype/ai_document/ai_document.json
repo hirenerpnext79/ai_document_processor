@@ -11,19 +11,23 @@
   "provider",
   "prompt",
   "status",
+  "column_break_csxc",
+  "created_at",
+  "processed_at",
+  "completed_at",
+  "section_break_yttf",
   "error_log",
   "extracted_text_tab",
   "extracted_text",
   "ai_response_tab",
   "seo_title",
+  "summary",
   "generated_hashtags",
   "generated_keywords",
   "column_break_ixgn",
   "usage_token",
-  "summary",
-  "section_break_nnwm",
   "ai_response",
-  "column_break_ttbn",
+  "section_break_nnwm",
   "json_response"
  ],
  "fields": [
@@ -135,22 +139,45 @@
    "label": "AI Response"
   },
   {
-   "fieldname": "column_break_ttbn",
-   "fieldtype": "Column Break"
-  },
-  {
    "fieldname": "column_break_ixgn",
    "fieldtype": "Column Break"
   },
   {
    "fieldname": "section_break_nnwm",
    "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_csxc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Now",
+   "fieldname": "created_at",
+   "fieldtype": "Datetime",
+   "label": "Created At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_yttf",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "completed_at",
+   "fieldtype": "Datetime",
+   "label": "Completed At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "processed_at",
+   "fieldtype": "Datetime",
+   "label": "Processed At",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-24 17:51:52.847021",
+ "modified": "2026-08-24 18:16:56.474899",
  "modified_by": "Administrator",
  "module": "AI Document Processor",
  "name": "AI Document",

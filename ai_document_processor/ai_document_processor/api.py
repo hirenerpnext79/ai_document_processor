@@ -53,6 +53,7 @@ def generate_response(docname, user=None):
         process_ai_response(doc, ai_response_text, usage_metadata)
         
         doc.status = "Completed"
+        doc.completed_at = frappe.utils.now_datetime()
         doc.save(ignore_permissions=True)
         frappe.db.commit()
         
@@ -75,6 +76,7 @@ def generate_response(docname, user=None):
 
 @frappe.whitelist()
 def enqueue_generate_response(docname):
+    frappe.db.set_value("AI Document", docname, "processed_at", frappe.utils.now_datetime())
     frappe.enqueue(
         'ai_document_processor.ai_document_processor.api.generate_response',
         queue='long',
