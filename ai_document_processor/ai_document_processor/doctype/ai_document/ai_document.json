@@ -11,15 +11,20 @@
   "provider",
   "prompt",
   "status",
+  "error_log",
+  "extracted_text_tab",
   "extracted_text",
-  "ai_response",
-  "usage_token",
+  "ai_response_tab",
+  "seo_title",
   "generated_hashtags",
   "generated_keywords",
-  "seo_title",
+  "column_break_ixgn",
+  "usage_token",
   "summary",
-  "json_response",
-  "error_log"
+  "section_break_nnwm",
+  "ai_response",
+  "column_break_ttbn",
+  "json_response"
  ],
  "fields": [
   {
@@ -118,13 +123,35 @@
    "label": "Usage Token",
    "no_copy": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "extracted_text_tab",
+   "fieldtype": "Tab Break",
+   "label": "Extracted Text"
+  },
+  {
+   "fieldname": "ai_response_tab",
+   "fieldtype": "Tab Break",
+   "label": "AI Response"
+  },
+  {
+   "fieldname": "column_break_ttbn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_ixgn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_nnwm",
+   "fieldtype": "Section Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-24 16:43:19.217352",
- "modified_by": "hirenerpnext79@gmail.com",
+ "modified": "2026-08-24 17:51:52.847021",
+ "modified_by": "Administrator",
  "module": "AI Document Processor",
  "name": "AI Document",
  "owner": "Administrator",
