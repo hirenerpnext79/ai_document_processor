@@ -155,6 +155,7 @@
    "fieldname": "created_at",
    "fieldtype": "Datetime",
    "label": "Created At",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -165,19 +166,21 @@
    "fieldname": "completed_at",
    "fieldtype": "Datetime",
    "label": "Completed At",
+   "no_copy": 1,
    "read_only": 1
   },
   {
    "fieldname": "processed_at",
    "fieldtype": "Datetime",
    "label": "Processed At",
+   "no_copy": 1,
    "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-24 18:16:56.474899",
+ "modified": "2026-08-26 15:37:28.961019",
  "modified_by": "Administrator",
  "module": "AI Document Processor",
  "name": "AI Document",

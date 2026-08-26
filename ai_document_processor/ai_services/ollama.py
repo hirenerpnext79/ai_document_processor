@@ -22,6 +22,7 @@ class OllamaService:
             "stream": False
         }
         
+        response = requests.post(url, headers=headers, json=data)
         result = response.json()
         text_content = result.get('response', '')
         usage = {
@@ -30,3 +31,4 @@ class OllamaService:
             "total_duration": result.get("total_duration")
         }
         return text_content, usage
+
