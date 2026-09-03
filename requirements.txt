@@ -1,2 +1,5 @@
-pymupdf
+﻿pymupdf
 requests
+pypdf
+pdfplumber
+PyPDF2
