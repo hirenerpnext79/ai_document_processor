@@ -1,4 +1,4 @@
-﻿import frappe
+import frappe
 from frappe import _
 import os
 
@@ -13,20 +13,7 @@ def extract_pdf_text(file_url):
     text = ""
     success = False
 
-    # Try 1: PyMuPDF (fitz) - Fastest and most accurate
-    if not success:
-        try:
-            import fitz
-            doc = fitz.open(file_path)
-            for page in doc:
-                text += page.get_text() + "\n"
-            success = True
-        except ImportError:
-            pass
-        except Exception as e:
-            frappe.log_error(title="PyMuPDF Extraction Failed", message=str(e))
-
-    # Try 2: pdfplumber - Great for layouts and tables
+    # Try 1: pdfplumber - Great for layouts and tables
     if not success:
         try:
             import pdfplumber
@@ -36,12 +23,12 @@ def extract_pdf_text(file_url):
                     if extracted:
                         text += extracted + "\n"
             success = True
-        except ImportError:
-            pass
+        except ImportError as e:
+            frappe.log_error(title="pdfplumber Import Failed", message=str(e))
         except Exception as e:
             frappe.log_error(title="pdfplumber Extraction Failed", message=str(e))
 
-    # Try 3: pypdf - Modern pure python
+    # Try 2: pypdf - Modern pure python
     if not success:
         try:
             import pypdf
@@ -52,12 +39,12 @@ def extract_pdf_text(file_url):
                     if extracted:
                         text += extracted + "\n"
             success = True
-        except ImportError:
-            pass
+        except ImportError as e:
+            frappe.log_error(title="pypdf Import Failed", message=str(e))
         except Exception as e:
             frappe.log_error(title="pypdf Extraction Failed", message=str(e))
 
-    # Try 4: PyPDF2 - Legacy pure python
+    # Try 3: PyPDF2 - Legacy pure python
     if not success:
         try:
             import PyPDF2
@@ -76,13 +63,27 @@ def extract_pdf_text(file_url):
                         if extracted:
                             text += extracted + "\n"
             success = True
-        except ImportError:
-            pass
+        except ImportError as e:
+            frappe.log_error(title="PyPDF2 Import Failed", message=str(e))
         except Exception as e:
             frappe.log_error(title="PyPDF2 Extraction Failed", message=str(e))
+
+    # Try 4: PyMuPDF (fitz) - Fastest and most accurate
+    if not success:
+        try:
+            import fitz
+            doc = fitz.open(file_path)
+            for page in doc:
+                text += page.get_text() + "\n"
+            success = True
+        except ImportError as e:
+            frappe.log_error(title="PyMuPDF Import Failed", message=str(e))
+        except Exception as e:
+            frappe.log_error(title="PyMuPDF Extraction Failed", message=str(e))
 
     if not success:
         frappe.throw(_("No PDF extraction library is installed. Please run 'pip install pymupdf pypdf pdfplumber' in your bench environment."))
 
     return text
+
 
