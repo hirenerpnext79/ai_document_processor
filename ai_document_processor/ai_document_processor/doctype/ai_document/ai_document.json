@@ -7,6 +7,7 @@
  "engine": "InnoDB",
  "field_order": [
   "title",
+  "pdf_library",
   "pdf_file",
   "provider",
   "prompt",
@@ -175,12 +176,21 @@
    "label": "Processed At",
    "no_copy": 1,
    "read_only": 1
+  },
+  {
+   "default": "PyMuPDF",
+   "fieldname": "pdf_library",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Pdf Library",
+   "options": "pdfplumber\npypdf\nPyPDF2\nPyMuPDF",
+   "reqd": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-26 15:37:28.961019",
+ "modified": "2026-09-10 12:31:57.701716",
  "modified_by": "Administrator",
  "module": "AI Document Processor",
  "name": "AI Document",

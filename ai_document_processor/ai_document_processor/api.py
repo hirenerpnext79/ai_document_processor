@@ -1,4 +1,4 @@
-import frappe
+﻿import frappe
 from frappe import _
 from .utils import extract_pdf_text
 from ai_document_processor.ai_services import generate
@@ -45,7 +45,8 @@ def generate_response(docname, user=None):
         doc.db_set("error_log", "", update_modified=False)
         frappe.db.commit()
         
-        doc.extracted_text = extract_pdf_text(doc.pdf_file)
+        pdf_library = doc.get("pdf_library")
+        doc.extracted_text = extract_pdf_text(doc.pdf_file, pdf_library=pdf_library)
         provider = frappe.get_doc("AI Provider", doc.provider)
         prompt = frappe.get_doc("AI Prompt", doc.prompt)
         
