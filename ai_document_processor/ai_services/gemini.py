@@ -12,14 +12,10 @@ class GeminiService:
         headers = {
             "Content-Type": "application/json"
         }
-        
-        system_instruction = "You are a helpful assistant. Always return JSON. The JSON should contain title, summary, hashtags (array of strings), and keywords (array of strings)."
+
         user_message = f"{prompt}\n\nDocument Text:\n{text}"
         
         data = {
-            "system_instruction": {
-                "parts": [{"text": system_instruction}]
-            },
             "contents": [{
                 "parts": [{"text": user_message}]
             }],

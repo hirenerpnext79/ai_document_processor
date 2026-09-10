@@ -1,4 +1,4 @@
-import requests
+﻿import requests
 import frappe
 
 class OpenRouterService:
@@ -27,7 +27,20 @@ class OpenRouterService:
             "response_format": {"type": "json_object"}
         }
         
-        result = response.json()
-        text_content = result['choices'][0]['message']['content']
-        usage = result.get('usage', {})
-        return text_content, usage
+        try:
+            response = requests.post(
+                f"{self.base_url.rstrip('/')}/chat/completions",
+                headers=headers,
+                json=data,
+                timeout=60
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            text_content = result['choices'][0]['message']['content']
+            usage = result.get('usage', {})
+            return text_content, usage
+        except requests.exceptions.RequestException as e:
+            error_msg = getattr(e.response, 'text', '')
+            frappe.log_error(f"OpenRouter API Call Failed: {str(e)}\nResponse: {error_msg}", "AI Document Processor OpenRouter Error")
+            raise

@@ -247,3 +247,6 @@ app_license = "mit"
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
+doctype_js = {"Contact": "public/js/contact.js"}
+
+after_migrate = "ai_document_processor.setup_contact_fields.setup_fields"
