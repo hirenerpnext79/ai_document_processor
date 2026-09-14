@@ -178,7 +178,7 @@
    "read_only": 1
   },
   {
-   "default": "PyMuPDF",
+   "default": "pypdf",
    "fieldname": "pdf_library",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -190,7 +190,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-10 12:31:57.701716",
+ "modified": "2026-09-11 14:20:53.943837",
  "modified_by": "Administrator",
  "module": "AI Document Processor",
  "name": "AI Document",
