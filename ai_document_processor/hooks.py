@@ -137,12 +137,6 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
 # }
 
 # Scheduled Tasks
@@ -247,6 +241,15 @@ app_license = "mit"
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
-doctype_js = {"Contact": "public/js/contact.js"}
+doctype_js = {"Contact": "public/js/contact.js", "Sales Order": "public/js/sales_order.js"}
 
 after_migrate = "ai_document_processor.setup_contact_fields.setup_fields"
+
+doc_events = {
+    "Contact": {
+        "before_validate": "ai_document_processor.api.auto_extract_contact"
+    },
+    "Sales Order": {
+        "before_validate": "ai_document_processor.api.auto_extract_sales_order"
+    }
+}

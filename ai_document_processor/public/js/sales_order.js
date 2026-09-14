@@ -1,4 +1,4 @@
-frappe.ui.form.on('Contact', {
+frappe.ui.form.on('Sales Order', {
     refresh(frm) {
         frm.add_custom_button(__('AI Extract'), async () => {
             await frm.cscript.perform_ai_extraction(frm);
@@ -9,7 +9,7 @@ frappe.ui.form.on('Contact', {
     async perform_ai_extraction(frm) {
         if (frm._is_extracting) return;
         
-        const file_url = frm.doc.id_document;
+        const file_url = frm.doc.po_document;
         const ai_provider = frm.doc.ai_provider;
 
         if (!ai_provider) {
@@ -22,7 +22,7 @@ frappe.ui.form.on('Contact', {
             frappe.dom.freeze(__('Extracting data...'));
 
             const { message } = await frappe.call({
-                method: 'ai_document_processor.api.process_contact_document',
+                method: 'ai_document_processor.api.process_sales_order_document',
                 args: {
                     file_url: file_url,
                     ai_provider: ai_provider
@@ -37,26 +37,20 @@ frappe.ui.form.on('Contact', {
             for (const [fieldname, value] of Object.entries(message)) {
                 if (!value) continue;
 
-                if (fieldname === 'email_ids' && Array.isArray(value)) {
-                    frm.clear_table('email_ids');
-                    for (const email of value) {
-                        if (email) {
-                            let row = frm.add_child('email_ids');
-                            row.email_id = email;
-                            row.is_primary = 1;
+                if (fieldname === 'items' && Array.isArray(value)) {
+                    frm.clear_table('items');
+                    for (const item of value) {
+                        if (item.item_code || item.item_name || item.description) {
+                            let row = frm.add_child('items');
+                            if (item.item_code) row.item_code = item.item_code;
+                            if (item.delivery_date) row.delivery_date = item.delivery_date;
+                            if (item.item_name) row.item_name = item.item_name;
+                            if (item.description) row.description = item.description;
+                            if (item.qty) row.qty = item.qty;
+                            if (item.uom) row.uom = item.uom;
+                            if (item.rate) row.rate = item.rate;
                         }
                     }
-                } else if (fieldname === 'phone_nos' && Array.isArray(value)) {
-                    frm.clear_table('phone_nos');
-                    for (const phone of value) {
-                        if (phone) {
-                            let row = frm.add_child('phone_nos');
-                            row.phone = phone;
-                            row.is_primary_phone = 1;
-                        }
-                    }
-                } else if (fieldname === 'address' && !frm.doc.visiting_card_address) {
-                    await frm.set_value('visiting_card_address', value);
                 } else if (frm.fields_dict[fieldname] && !frm.doc[fieldname]) {
                     await frm.set_value(fieldname, value);
                 }
