@@ -1,4 +1,4 @@
-﻿import frappe
+import frappe
 import json
 import io
 import pytesseract
@@ -74,6 +74,7 @@ def process_contact_document(file_url=None, ai_provider=None):
         result, usage = generate(provider_doc, Prompt(), extracted_text)        
 
         data = json.loads(result)
+        data["token_usage"] = json.dumps(usage) if usage else "{}"
         return data
     except Exception as e:
         frappe.log_error(f"LLM Extraction Failed: {str(e)}", "Contact Document LLM Error")
@@ -152,6 +153,7 @@ def process_sales_order_document(file_url=None, ai_provider=None):
         result, usage = generate(provider_doc, Prompt(), extracted_text)        
 
         data = json.loads(result)
+        data["token_usage"] = json.dumps(usage) if usage else "{}"
         return data
     except Exception as e:
         frappe.log_error(f"LLM Extraction Failed: {str(e)}", "Sales Order Document LLM Error")
@@ -208,6 +210,8 @@ def auto_extract_contact(doc, method):
             doc.gender = value
         elif fieldname == "company_name" and not doc.company_name:
             doc.company_name = value
+        elif fieldname == "token_usage" and not doc.token_usage:
+            doc.token_usage = value
 
 def auto_extract_sales_order(doc, method):
     if not doc.po_document:
@@ -252,3 +256,6 @@ def auto_extract_sales_order(doc, method):
             doc.po_no = value
         elif fieldname == "delivery_date" and not doc.delivery_date:
             doc.delivery_date = value
+        elif fieldname == "token_usage" and not doc.token_usage:
+            doc.token_usage = value
+

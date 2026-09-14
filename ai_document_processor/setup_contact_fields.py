@@ -1,4 +1,4 @@
-﻿import frappe
+import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 def setup_fields():
@@ -22,7 +22,14 @@ def setup_fields():
                 "label": "Visiting Card Address",
                 "fieldtype": "Text",
                 "insert_after": "address",
-                "readonly": 1
+                "read_only": 1
+            },
+            {
+                "fieldname": "token_usage",
+                "label": "Token Usage",
+                "fieldtype": "JSON",
+                "insert_after": "visiting_card_address",
+                "read_only": 1
             }
         ],
         "Sales Order": [
@@ -37,9 +44,17 @@ def setup_fields():
                 "label": "AI Provider",
                 "fieldtype": "Link",
                 "options": "AI Provider",
-                "insert_after": "po_document",
+                "insert_after": "po_document"
+            },
+            {
+                "fieldname": "token_usage",
+                "label": "Token Usage",
+                "fieldtype": "JSON",
+                "insert_after": "ai_provider",
+                "read_only": 1
             }
         ]
     }
     create_custom_fields(custom_fields)
     print("Custom fields created successfully.")
+
