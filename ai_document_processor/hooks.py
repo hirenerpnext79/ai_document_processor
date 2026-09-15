@@ -245,11 +245,11 @@ doctype_js = {"Contact": "public/js/contact.js", "Sales Order": "public/js/sales
 
 after_migrate = "ai_document_processor.setup_contact_fields.setup_fields"
 
-doc_events = {
-    "Contact": {
-        "before_validate": "ai_document_processor.api.auto_extract_contact"
-    },
-    "Sales Order": {
-        "before_validate": "ai_document_processor.api.auto_extract_sales_order"
-    }
-}
+# doc_events = {
+#     "Contact": {
+#         "before_validate": "ai_document_processor.api.auto_extract_contact"
+#     },
+#     "Sales Order": {
+#         "before_validate": "ai_document_processor.api.auto_extract_sales_order"
+#     }
+# }
