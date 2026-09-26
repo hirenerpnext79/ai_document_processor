@@ -1,6 +1,7 @@
-﻿pymupdf
+pymupdf
 requests
 pypdf
 pdfplumber
 PyPDF2
 pytesseract
+Pillow
