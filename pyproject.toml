@@ -9,6 +9,13 @@ readme = "README.md"
 dynamic = ["version"]
 dependencies = [
     # "frappe~=15.0.0" # Installed and managed by bench.
+    "pymupdf",
+    "requests",
+    "pypdf",
+    "pdfplumber",
+    "PyPDF2",
+    "pytesseract",
+    "Pillow"
 ]
 
 [tool.bench.frappe-dependencies]
