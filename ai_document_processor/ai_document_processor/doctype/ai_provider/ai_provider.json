@@ -29,7 +29,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Provider",
-   "options": "Gemini\nGroq\nOpenRouter",
+   "options": "Gemini\nOpenRouter",
    "reqd": 1
   },
   {

@@ -45,8 +45,7 @@ def generate_response(docname, user=None):
         doc.db_set("error_log", "", update_modified=False)
         frappe.db.commit()
         
-        pdf_library = doc.get("pdf_library")
-        doc.extracted_text = extract_pdf_text(doc.pdf_file, pdf_library=pdf_library)
+        doc.extracted_text = extract_pdf_text(doc.pdf_file)
         provider = frappe.get_doc("AI Provider", doc.provider)
         prompt = frappe.get_doc("AI Prompt", doc.prompt)
         

@@ -7,7 +7,6 @@
  "engine": "InnoDB",
  "field_order": [
   "title",
-  "pdf_library",
   "pdf_file",
   "provider",
   "prompt",
@@ -71,6 +70,7 @@
    "fieldname": "extracted_text",
    "fieldtype": "Long Text",
    "label": "Extracted Text",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -176,21 +176,12 @@
    "label": "Processed At",
    "no_copy": 1,
    "read_only": 1
-  },
-  {
-   "default": "pypdf",
-   "fieldname": "pdf_library",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "label": "Pdf Library",
-   "options": "pdfplumber\npypdf\nPyPDF2\nPyMuPDF",
-   "reqd": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-11 14:20:53.943837",
+ "modified": "2026-09-28 12:09:03.626914",
  "modified_by": "Administrator",
  "module": "AI Document Processor",
  "name": "AI Document",

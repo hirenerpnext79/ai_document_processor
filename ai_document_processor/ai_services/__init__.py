@@ -1,14 +1,12 @@
 import frappe
 from frappe import _
 from .gemini import GeminiService
-from .groq import GroqService
 from .openrouter import OpenRouterService
 import json
 
 def get_service_class(provider_name):
     services = {
         'Gemini': GeminiService,
-        'Groq': GroqService,
         'OpenRouter': OpenRouterService
     }
     return services.get(provider_name)
