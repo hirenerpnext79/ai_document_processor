@@ -1,10 +1,11 @@
 import frappe
 import json
 import io
+import shutil
 try:
     import pytesseract
     from PIL import Image
-    HAS_OCR_LIBS = True
+    HAS_OCR_LIBS = bool(shutil.which('tesseract'))
 except ImportError:
     HAS_OCR_LIBS = False
 from frappe import _
