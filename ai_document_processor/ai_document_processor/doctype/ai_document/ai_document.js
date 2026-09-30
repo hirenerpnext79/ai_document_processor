@@ -1,4 +1,22 @@
 frappe.ui.form.on('AI Document', {
+    onload: function(frm) {
+        frm.set_query("provider", function() {
+            return {
+                query: "ai_document_processor.api.get_provider_query"
+            };
+        });
+        
+        if (!frm.doc.provider && frm.is_new()) {
+            frappe.call({
+                method: "ai_document_processor.api.get_default_ai_provider",
+                callback: function(r) {
+                    if (r.message) {
+                        frm.set_value("provider", r.message);
+                    }
+                }
+            });
+        }
+    },
     refresh: function (frm) {
         if (!frm.is_new() && frm.doc.pdf_file && frm.doc.provider && frm.doc.prompt && ['Pending', 'Failed'].includes(frm.doc.status)) {
             frm.add_custom_button(__('Generate AI Response'), function () {

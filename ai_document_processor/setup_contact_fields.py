@@ -5,18 +5,12 @@ def setup_fields():
     custom_fields = {
         "Contact": [
             {
-                "fieldname": "id_document",
-                "label": "ID Document",
+                "fieldname": "ai_id_document",
+                "label": "AI ID Document",
                 "fieldtype": "Attach Image",
                 "insert_after": "image",
             },
-            {
-                "fieldname": "ai_provider",
-                "label": "AI Provider",
-                "fieldtype": "Link",
-                "options": "AI Provider",
-                "insert_after": "id_document",
-            },
+
             {
                 "fieldname": "visiting_card_address",
                 "label": "Visiting Card Address",
@@ -34,23 +28,16 @@ def setup_fields():
         ],
         "Sales Order": [
             {
-                "fieldname": "po_document",
-                "label": "PO Document",
+                "fieldname": "ai_po_document",
+                "label": "AI PO Document",
                 "fieldtype": "Attach",
                 "insert_after": "po_no",
-            },
-            {
-                "fieldname": "ai_provider",
-                "label": "AI Provider",
-                "fieldtype": "Link",
-                "options": "AI Provider",
-                "insert_after": "po_document"
             },
             {
                 "fieldname": "token_usage",
                 "label": "Token Usage",
                 "fieldtype": "JSON",
-                "insert_after": "ai_provider",
+                "insert_after": "po_document",
                 "read_only": 1
             }
         ]

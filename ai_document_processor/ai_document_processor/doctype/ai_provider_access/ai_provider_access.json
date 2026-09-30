@@ -1,0 +1,64 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-09-30 12:37:29.648724",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "access_type",
+  "user",
+  "role",
+  "is_default"
+ ],
+ "fields": [
+  {
+   "fieldname": "access_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Access Type",
+   "options": "User\nRole",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.access_type=='User'",
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "User",
+   "mandatory_depends_on": "eval:doc.access_type=='User'",
+   "options": "User"
+  },
+  {
+   "depends_on": "eval:doc.access_type=='Role'",
+   "fieldname": "role",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Role",
+   "mandatory_depends_on": "eval:doc.access_type=='Role'",
+   "options": "Role"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_default",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Is Default"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-30 12:37:29.648724",
+ "modified_by": "Administrator",
+ "module": "AI Document Processor",
+ "name": "AI Provider Access",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

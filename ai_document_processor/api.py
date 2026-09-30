@@ -1,40 +1,114 @@
 import frappe
+from frappe import _
 import json
 import io
-import shutil
+
 try:
-    import pytesseract
     from PIL import Image
-    HAS_OCR_LIBS = bool(shutil.which('tesseract'))
+    import pytesseract
+    HAS_OCR_LIBS = True
 except ImportError:
     HAS_OCR_LIBS = False
-from frappe import _
+
 from ai_document_processor.ai_services import generate
 
-@frappe.whitelist()
-def process_contact_document(file_url=None, ai_provider=None):
-    if not file_url:
-        frappe.throw(_("Please upload an ID Document first."), title=_("Document Required"))
+def get_default_ai_provider(user=None):
+    if not user:
+        user = frappe.session.user
+        
+    roles = frappe.get_roles(user)
+    
+    provider = frappe.get_all(
+        "AI Provider Access",
+        filters={
+            "access_type": "User",
+            "user": user,
+            "is_default": 1
+        },
+        pluck="parent",
+        limit=1,
+        ignore_permissions=True
+    )
 
-    if not ai_provider:
-        frappe.throw(_("Please select an AI Provider first."), title=_("AI Provider Required"))
+    if provider and frappe.db.get_value("AI Provider", provider[0], "is_active") == 1:
+        return provider[0]
+
+    if roles:
+        provider = frappe.get_all(
+            "AI Provider Access",
+            filters={
+                "access_type": "Role",
+                "role": ("in", roles),
+                "is_default": 1
+            },
+            pluck="parent",
+            limit=1,
+            ignore_permissions=True
+        )
+
+        if provider and frappe.db.get_value("AI Provider", provider[0], "is_active") == 1:
+            return provider[0]
+
+    latest_active = frappe.get_all(
+        "AI Provider",
+        filters={"is_active": 1},
+        order_by="creation desc",
+        limit=1,
+        pluck="name",
+        ignore_permissions=True
+    )
+
+    if latest_active:
+        return latest_active[0]
+
+    return None
+
+def _extract_text_from_file(file_url, doc_type_name):
+    if not file_url:
+        frappe.throw(_("Please upload a Document first."), title=_("Document Required"))
 
     file_doc = frappe.get_doc("File", {"file_url": file_url})
     file_content = file_doc.get_content()
 
     if not HAS_OCR_LIBS:
         frappe.msgprint(_("OCR libraries (pytesseract or PIL) are not installed. Skipping extraction."), indicator="orange", alert=True)
-        return {}
+        return None
 
     try:
         image = Image.open(io.BytesIO(file_content))
         extracted_text = pytesseract.image_to_string(image)
-        extracted_text = extracted_text.strip()
+        return extracted_text.strip()
     except Exception as e:
         frappe.msgprint(_("OCR Extraction Failed. Skipping extraction. Check Error Log for details."), indicator="orange", alert=True)
-        frappe.log_error(f"OCR Extraction Failed: {str(e)}", "Contact Document OCR Error")
+        frappe.log_error(message=f"OCR Extraction Failed: {str(e)}", title=f"{doc_type_name} OCR Error")
+        return None
+
+def _generate_llm_response(prompt_text, extracted_text, doc_type_name):
+    provider_name = get_default_ai_provider()
+    
+    if not provider_name:
+        frappe.throw(_("No enabled AI Provider found"))
+        
+    provider_doc = frappe.get_doc("AI Provider", provider_name)
+   
+    try:
+        prompt_doc = frappe._dict(prompt=prompt_text)
+        result, usage = generate(provider_doc, prompt_doc, extracted_text)        
+
+        data = json.loads(result)
+        usage_data = usage if usage else {}
+        usage_data["ai_provider"] = provider_doc.name
+        data["token_usage"] = json.dumps(usage_data)
+        return data
+    except Exception as e:
+        frappe.log_error(message=f"LLM Extraction Failed: {str(e)}", title=f"{doc_type_name} LLM Error")
+        frappe.msgprint(_("LLM Extraction Failed: {0}").format(str(e)), title=_("Extraction Error"), indicator="red")
         return {}
 
+
+@frappe.whitelist()
+def process_contact_document(file_url=None, ai_provider=None):
+    extracted_text = _extract_text_from_file(file_url, "Contact Document")
     if not extracted_text:
         return {}
 
@@ -42,6 +116,9 @@ def process_contact_document(file_url=None, ai_provider=None):
     Extract the following contact information from the OCR text provided below.
     Return ONLY a valid JSON object matching this exact schema, with no additional text or markdown formatting.
     Missing values should be empty strings.
+    For 'salutation', use ONLY one of the following values if applicable: "Prof", "Master", "Miss", "Madam", "Mrs", "Dr", "Mx", "Ms", "Mr".
+    For 'last_name', extract ONLY the person's surname (e.g. SAVALIYA).
+    For 'company_name', extract ONLY the company name (e.g. HNS). CRITICAL: Do NOT join or include the person's last name inside the company name!
 
     {{
       "first_name": "",
@@ -60,60 +137,12 @@ def process_contact_document(file_url=None, ai_provider=None):
     {extracted_text}
     """
 
-    if ai_provider:
-        provider_doc = frappe.get_doc("AI Provider", ai_provider)
-    else:
-        provider_doc = frappe.get_all(
-            "AI Provider",
-            filters={
-                "status": "Active"
-            },
-            fields=["*"],
-            limit=1
-        )
-        if provider_doc:
-            provider_doc = frappe.get_doc("AI Provider", provider_doc[0].name)
+    return _generate_llm_response(prompt_text, extracted_text, "Contact Document")
 
-    if not provider_doc:
-        frappe.throw(_("No enabled AI Provider found"))
-   
-    try:
-        class Prompt:
-            prompt = prompt_text
-            
-        result, usage = generate(provider_doc, Prompt(), extracted_text)        
-
-        data = json.loads(result)
-        data["token_usage"] = json.dumps(usage) if usage else "{}"
-        return data
-    except Exception as e:
-        frappe.log_error(f"LLM Extraction Failed: {str(e)}", "Contact Document LLM Error")
-        return {}
 
 @frappe.whitelist()
 def process_sales_order_document(file_url=None, ai_provider=None):
-    if not file_url:
-        frappe.throw(_("Please upload a PO Document first."), title=_("Document Required"))
-
-    if not ai_provider:
-        frappe.throw(_("Please select an AI Provider first."), title=_("AI Provider Required"))
-
-    file_doc = frappe.get_doc("File", {"file_url": file_url})
-    file_content = file_doc.get_content()
-
-    if not HAS_OCR_LIBS:
-        frappe.msgprint(_("OCR libraries (pytesseract or PIL) are not installed. Skipping extraction."), indicator="orange", alert=True)
-        return {}
-
-    try:
-        image = Image.open(io.BytesIO(file_content))
-        extracted_text = pytesseract.image_to_string(image)
-        extracted_text = extracted_text.strip()
-    except Exception as e:
-        frappe.msgprint(_("OCR Extraction Failed. Skipping extraction. Check Error Log for details."), indicator="orange", alert=True)
-        frappe.log_error(f"OCR Extraction Failed: {str(e)}", "Sales Order Document OCR Error")
-        return {}
-
+    extracted_text = _extract_text_from_file(file_url, "Sales Order Document")
     if not extracted_text:
         return {}
 
@@ -144,55 +173,26 @@ def process_sales_order_document(file_url=None, ai_provider=None):
     {extracted_text}
     """
 
-    if ai_provider:
-        provider_doc = frappe.get_doc("AI Provider", ai_provider)
-    else:
-        provider_doc = frappe.get_all(
-            "AI Provider",
-            filters={
-                "status": "Active"
-            },
-            fields=["*"],
-            limit=1
-        )
-        if provider_doc:
-            provider_doc = frappe.get_doc("AI Provider", provider_doc[0].name)
+    return _generate_llm_response(prompt_text, extracted_text, "Sales Order Document")
 
-    if not provider_doc:
-        frappe.throw(_("No enabled AI Provider found"))
-   
-    try:
-        class Prompt:
-            prompt = prompt_text
-            
-        result, usage = generate(provider_doc, Prompt(), extracted_text)        
+def _should_auto_extract(doc, file_field):
+    if not doc.get(file_field):
+        return False
 
-        data = json.loads(result)
-        data["token_usage"] = json.dumps(usage) if usage else "{}"
-        return data
-    except Exception as e:
-        frappe.log_error(f"LLM Extraction Failed: {str(e)}", "Sales Order Document LLM Error")
-        return {}
+    if doc.is_new():
+        return True
+        
+    doc_before_save = doc.get_doc_before_save()
+    if doc_before_save and doc.get(file_field) != doc_before_save.get(file_field):
+        return True
+        
+    return False
 
 def auto_extract_contact(doc, method):
-    if not doc.id_document:
-        return
-
-    should_extract = False
-    if doc.is_new():
-        should_extract = True
-    else:
-        doc_before_save = doc.get_doc_before_save()
-        if doc_before_save and doc.id_document != doc_before_save.id_document:
-            should_extract = True
-            
-    if not should_extract:
+    if not _should_auto_extract(doc, "ai_id_document"):
         return
         
-    if not doc.ai_provider:
-        frappe.throw(_("Please select an AI Provider before saving the document for auto-extraction."))
-        
-    data = process_contact_document(doc.id_document, doc.ai_provider)
+    data = process_contact_document(doc.ai_id_document, doc.get("ai_provider"))
     if not data:
         return
         
@@ -209,44 +209,15 @@ def auto_extract_contact(doc, method):
             for phone in value:
                 if phone:
                     doc.append("phone_nos", {"phone": phone, "is_primary_phone": 1})
-        elif fieldname == "visiting_card_address" and not doc.visiting_card_address:
-            doc.visiting_card_address = value
-        elif fieldname == "first_name" and not doc.first_name:
-            doc.first_name = value
-        elif fieldname == "middle_name" and not doc.middle_name:
-            doc.middle_name = value
-        elif fieldname == "last_name" and not doc.last_name:
-            doc.last_name = value
-        elif fieldname == "salutation" and not doc.salutation:
-            doc.salutation = value
-        elif fieldname == "designation" and not doc.designation:
-            doc.designation = value
-        elif fieldname == "gender" and not doc.gender:
-            doc.gender = value
-        elif fieldname == "company_name" and not doc.company_name:
-            doc.company_name = value
-        elif fieldname == "token_usage" and not doc.token_usage:
-            doc.token_usage = value
+        elif fieldname in ["visiting_card_address", "first_name", "middle_name", "last_name", "salutation", "designation", "gender", "company_name", "token_usage"]:
+            if not doc.get(fieldname):
+                doc.set(fieldname, value)
 
 def auto_extract_sales_order(doc, method):
-    if not doc.po_document:
-        return
-
-    should_extract = False
-    if doc.is_new():
-        should_extract = True
-    else:
-        doc_before_save = doc.get_doc_before_save()
-        if doc_before_save and doc.po_document != doc_before_save.po_document:
-            should_extract = True
-            
-    if not should_extract:
+    if not _should_auto_extract(doc, "ai_po_document"):
         return
         
-    if not doc.ai_provider:
-        frappe.throw(_("Please select an AI Provider before saving the document for auto-extraction."))
-        
-    data = process_sales_order_document(doc.po_document, doc.ai_provider)
+    data = process_sales_order_document(doc.ai_po_document, doc.get("ai_provider"))
     if not data:
         return
         
@@ -258,19 +229,56 @@ def auto_extract_sales_order(doc, method):
             for item in value:
                 if item.get("item_code") or item.get("item_name") or item.get("description"):
                     row = doc.append("items", {})
-                    if item.get("item_code"): row.item_code = item.get("item_code")
-                    if item.get("delivery_date"): row.delivery_date = item.get("delivery_date")
-                    if item.get("item_name"): row.item_name = item.get("item_name")
-                    if item.get("description"): row.description = item.get("description")
-                    if item.get("qty"): row.qty = item.get("qty")
-                    if item.get("uom"): row.uom = item.get("uom")
-                    if item.get("rate"): row.rate = item.get("rate")
-        elif fieldname == "customer" and not doc.customer:
-            doc.customer = value
-        elif fieldname == "po_no" and not doc.po_no:
-            doc.po_no = value
-        elif fieldname == "delivery_date" and not doc.delivery_date:
-            doc.delivery_date = value
-        elif fieldname == "token_usage" and not doc.token_usage:
-            doc.token_usage = value
+                    for item_field in ["item_code", "delivery_date", "item_name", "description", "qty", "uom", "rate"]:
+                        if item.get(item_field):
+                            row.set(item_field, item.get(item_field))
+                            
+        elif fieldname in ["customer", "po_no", "delivery_date", "token_usage"]:
+            if not doc.get(fieldname):
+                doc.set(fieldname, value)
 
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def get_provider_query(doctype, txt, searchfield, start, page_len, filters):
+    user = frappe.session.user
+    roles = frappe.get_roles(user)
+    
+    allowed_by_user = frappe.get_all(
+        "AI Provider Access",
+        filters={"access_type": "User", "user": user},
+        pluck="parent",
+        ignore_permissions=True
+    )
+    
+    allowed_by_role = []
+    if roles:
+        allowed_by_role = frappe.get_all(
+            "AI Provider Access",
+            filters={"access_type": "Role", "role": ("in", roles)},
+            pluck="parent",
+            ignore_permissions=True
+        )
+        
+    allowed_providers = list(set(allowed_by_user + allowed_by_role))
+    
+    searchfield = searchfield or "name"
+    start = int(start) if start else 0
+    page_len = int(page_len) if page_len else 20
+    
+    query_filters = [
+        [searchfield, "like", f"%{txt}%"],
+        ["is_active", "=", 1]
+    ]
+    
+    if allowed_providers:
+        query_filters.append(["name", "in", allowed_providers])
+    
+    return frappe.get_all(
+        "AI Provider",
+        filters=query_filters,
+        fields=["name", "provider_name"],
+        limit_start=start,
+        limit_page_length=page_len,
+        as_list=True,
+        ignore_permissions=True
+    )
