@@ -1,11 +1,13 @@
 {
  "actions": [],
  "allow_rename": 1,
+ "autoname": "naming_series:",
  "creation": "2026-07-21 13:07:05.639987",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "naming_series",
   "prompt_name",
   "purpose",
   "prompt",
@@ -37,12 +39,18 @@
    "fieldname": "active",
    "fieldtype": "Check",
    "label": "Active"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Naming Series",
+   "options": "PMT-.#####"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-21 13:31:03.097293",
+ "modified": "2026-09-30 12:25:55.927748",
  "modified_by": "Administrator",
  "module": "AI Document Processor",
  "name": "AI Prompt",

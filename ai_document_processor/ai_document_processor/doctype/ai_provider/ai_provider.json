@@ -1,19 +1,22 @@
 {
  "actions": [],
  "allow_rename": 1,
- "autoname": "field:provider_name",
+ "autoname": "naming_series:",
  "creation": "2026-07-21 13:07:03.320939",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "naming_series",
   "provider_name",
   "provider",
+  "is_active",
+  "column_break_gecm",
   "api_key",
   "base_url",
   "model",
-  "is_default",
-  "status"
+  "section_break_zfzn",
+  "access_list"
  ],
  "fields": [
   {
@@ -35,12 +38,14 @@
   {
    "fieldname": "api_key",
    "fieldtype": "Password",
-   "label": "API Key"
+   "label": "API Key",
+   "reqd": 1
   },
   {
    "fieldname": "base_url",
    "fieldtype": "Data",
-   "label": "Base URL"
+   "label": "Base URL",
+   "reqd": 1
   },
   {
    "fieldname": "model",
@@ -50,27 +55,40 @@
    "reqd": 1
   },
   {
-   "default": "0",
-   "fieldname": "is_default",
-   "fieldtype": "Check",
-   "label": "Is Default"
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Naming Series",
+   "options": "AIP-.#####"
   },
   {
-   "default": "Active",
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "label": "Status",
-   "options": "Active\nInactive"
+   "fieldname": "access_list",
+   "fieldtype": "Table",
+   "label": "Access List",
+   "options": "AI Provider Access"
+  },
+  {
+   "fieldname": "column_break_gecm",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_zfzn",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Is Active"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-07 11:04:20.194799",
+ "modified": "2026-09-30 14:34:42.718994",
  "modified_by": "Administrator",
  "module": "AI Document Processor",
  "name": "AI Provider",
- "naming_rule": "By fieldname",
+ "naming_rule": "By \"Naming Series\" field",
  "owner": "Administrator",
  "permissions": [
   {
@@ -90,5 +108,6 @@
  "rows_threshold_for_grid_search": 20,
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "title_field": "provider_name"
 }
