@@ -12,6 +12,7 @@ except ImportError:
 
 from ai_document_processor.ai_services import generate
 
+@frappe.whitelist()
 def get_default_ai_provider(user=None):
     if not user:
         user = frappe.session.user
