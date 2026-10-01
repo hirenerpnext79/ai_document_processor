@@ -50,7 +50,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-30 12:25:55.927748",
+ "modified": "2026-10-01 12:36:43.689739",
  "modified_by": "Administrator",
  "module": "AI Document Processor",
  "name": "AI Prompt",
@@ -73,5 +73,6 @@
  "rows_threshold_for_grid_search": 20,
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "title_field": "prompt_name"
 }
