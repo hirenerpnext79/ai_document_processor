@@ -10,8 +10,10 @@
   "naming_series",
   "prompt_name",
   "purpose",
-  "prompt",
-  "active"
+  "active",
+  "column_break_ziwu",
+  "section_break_smds",
+  "prompt"
  ],
  "fields": [
   {
@@ -38,22 +40,31 @@
    "default": "1",
    "fieldname": "active",
    "fieldtype": "Check",
-   "label": "Active"
+   "label": "Is Active"
   },
   {
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Naming Series",
    "options": "PMT-.#####"
+  },
+  {
+   "fieldname": "column_break_ziwu",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_smds",
+   "fieldtype": "Section Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-01 12:36:43.689739",
+ "modified": "2026-10-01 15:01:46.730171",
  "modified_by": "Administrator",
  "module": "AI Document Processor",
  "name": "AI Prompt",
+ "naming_rule": "By \"Naming Series\" field",
  "owner": "Administrator",
  "permissions": [
   {

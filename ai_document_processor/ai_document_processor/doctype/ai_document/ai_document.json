@@ -50,12 +50,14 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Provider",
+   "link_filters": "[[\"AI Provider\",\"is_active\",\"=\",1]]",
    "options": "AI Provider"
   },
   {
    "fieldname": "prompt",
    "fieldtype": "Link",
    "label": "Prompt",
+   "link_filters": "[[\"AI Prompt\",\"active\",\"=\",1]]",
    "options": "AI Prompt"
   },
   {
@@ -189,7 +191,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-30 12:21:13.649333",
+ "modified": "2026-10-01 14:57:11.630097",
  "modified_by": "Administrator",
  "module": "AI Document Processor",
  "name": "AI Document",
