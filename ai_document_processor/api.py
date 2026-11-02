@@ -1,7 +1,9 @@
+import io
+import json
+import os
+import requests
 import frappe
 from frappe import _
-import json
-import io
 
 try:
     from PIL import Image
@@ -64,12 +66,90 @@ def get_default_ai_provider(user=None):
 
     return None
 
+def is_google_drive_url(url):
+    if not url or not isinstance(url, str):
+        return False
+    return "drive.google.com" in url or "docs.google.com" in url
+
+def extract_file_id(url):
+    if not url:
+        return None
+    clean = str(url).strip()
+    if "/d/" in clean:
+        return clean.split("/d/")[1].split("/")[0].split("?")[0]
+    if "id=" in clean:
+        return clean.split("id=")[1].split("&")[0]
+    return None
+
+def download_google_drive_file(url):
+    file_id = extract_file_id(url)
+    if not file_id:
+        return None
+
+    token = None
+    try:
+        gd = frappe.get_doc("Google Drive")
+        token = gd.get_access_token()
+    except Exception:
+        token = None
+
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    try:
+        api_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
+        response = requests.get(api_url, headers=headers, timeout=30)
+        if response.status_code == 200:
+            return response.content
+    except Exception as e:
+        frappe.log_error(message=f"Google Drive API Download Error: {str(e)}", title="Google Drive Download Failed")
+
+    try:
+        fallback_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        response = requests.get(fallback_url, timeout=30)
+        if response.status_code == 200 and not response.headers.get("Content-Type", "").startswith("text/html"):
+            return response.content
+    except Exception:
+        pass
+
+    return None
+
+def _get_file_content(file_url):
+    if not file_url:
+        return None
+
+    if is_google_drive_url(file_url):
+        return download_google_drive_file(file_url)
+
+    if file_url.startswith(("http://", "https://")):
+        try:
+            response = requests.get(file_url, timeout=30)
+            if response.status_code == 200:
+                return response.content
+        except Exception as e:
+            frappe.log_error(message=f"File URL Download Error: {str(e)}", title="File Download Error")
+            return None
+
+    if frappe.db.exists("File", {"file_url": file_url}):
+        file_doc = frappe.get_doc("File", {"file_url": file_url})
+        return file_doc.get_content()
+
+    for folder in ["public", "private"]:
+        path = frappe.get_site_path(folder, file_url.lstrip("/"))
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                return f.read()
+
+    return None
+
 def _extract_text_from_file(file_url, doc_type_name):
     if not file_url:
         frappe.throw(_("Please upload a Document first."), title=_("Document Required"))
 
-    file_doc = frappe.get_doc("File", {"file_url": file_url})
-    file_content = file_doc.get_content()
+    file_content = _get_file_content(file_url)
+    if not file_content:
+        frappe.throw(_("Could not fetch file content from {0}").format(file_url), title=_("File Not Found"))
 
     if not HAS_OCR_LIBS:
         frappe.msgprint(_("OCR libraries (pytesseract or PIL) are not installed. Skipping extraction."), indicator="orange", alert=True)
@@ -84,8 +164,8 @@ def _extract_text_from_file(file_url, doc_type_name):
         frappe.log_error(message=f"OCR Extraction Failed: {str(e)}", title=f"{doc_type_name} OCR Error")
         return None
 
-def _generate_llm_response(prompt_text, extracted_text, doc_type_name):
-    provider_name = get_default_ai_provider()
+def _generate_llm_response(prompt_text, extracted_text, doc_type_name, ai_provider=None):
+    provider_name = ai_provider or get_default_ai_provider()
     
     if not provider_name:
         frappe.throw(_("No enabled AI Provider found"))
@@ -105,7 +185,6 @@ def _generate_llm_response(prompt_text, extracted_text, doc_type_name):
         frappe.log_error(message=f"LLM Extraction Failed: {str(e)}", title=f"{doc_type_name} LLM Error")
         frappe.msgprint(_("LLM Extraction Failed: {0}").format(str(e)), title=_("Extraction Error"), indicator="red")
         return {}
-
 
 @frappe.whitelist()
 def process_contact_document(file_url=None, ai_provider=None):
@@ -138,8 +217,7 @@ def process_contact_document(file_url=None, ai_provider=None):
     {extracted_text}
     """
 
-    return _generate_llm_response(prompt_text, extracted_text, "Contact Document")
-
+    return _generate_llm_response(prompt_text, extracted_text, "Contact Document", ai_provider)
 
 @frappe.whitelist()
 def process_sales_order_document(file_url=None, ai_provider=None):
@@ -174,7 +252,7 @@ def process_sales_order_document(file_url=None, ai_provider=None):
     {extracted_text}
     """
 
-    return _generate_llm_response(prompt_text, extracted_text, "Sales Order Document")
+    return _generate_llm_response(prompt_text, extracted_text, "Sales Order Document", ai_provider)
 
 def _should_auto_extract(doc, file_field):
     if not doc.get(file_field):
@@ -190,53 +268,63 @@ def _should_auto_extract(doc, file_field):
     return False
 
 def auto_extract_contact(doc, method):
-    if not _should_auto_extract(doc, "ai_id_document"):
-        return
-        
-    data = process_contact_document(doc.ai_id_document, doc.get("ai_provider"))
-    if not data:
-        return
-        
-    for fieldname, value in data.items():
-        if not value: continue
-        
-        if fieldname == "email_ids" and isinstance(value, list):
-            doc.set("email_ids", [])
-            for email in value:
-                if email:
-                    doc.append("email_ids", {"email_id": email, "is_primary": 1})
-        elif fieldname == "phone_nos" and isinstance(value, list):
-            doc.set("phone_nos", [])
-            for phone in value:
-                if phone:
-                    doc.append("phone_nos", {"phone": phone, "is_primary_phone": 1})
-        elif fieldname in ["visiting_card_address", "first_name", "middle_name", "last_name", "salutation", "designation", "gender", "company_name", "token_usage"]:
-            if not doc.get(fieldname):
-                doc.set(fieldname, value)
+    try:
+        if not _should_auto_extract(doc, "ai_id_document"):
+            return
+
+        file_url = doc.ai_id_document
+        data = process_contact_document(file_url, doc.get("ai_provider"))
+        if not data:
+            return
+
+        for fieldname, value in data.items():
+            if not value:
+                continue
+
+            if fieldname == "email_ids" and isinstance(value, list):
+                doc.set("email_ids", [])
+                for email in value:
+                    if email:
+                        doc.append("email_ids", {"email_id": email, "is_primary": 1})
+            elif fieldname == "phone_nos" and isinstance(value, list):
+                doc.set("phone_nos", [])
+                for phone in value:
+                    if phone:
+                        doc.append("phone_nos", {"phone": phone, "is_primary_phone": 1})
+            elif fieldname in ["visiting_card_address", "first_name", "middle_name", "last_name", "salutation", "designation", "gender", "company_name", "token_usage"]:
+                if not doc.get(fieldname):
+                    doc.set(fieldname, value)
+    except Exception as e:
+        frappe.log_error(message=f"Contact Auto Extraction Error: {str(e)}", title="Contact Auto Extraction Error")
 
 def auto_extract_sales_order(doc, method):
-    if not _should_auto_extract(doc, "ai_po_document"):
-        return
-        
-    data = process_sales_order_document(doc.ai_po_document, doc.get("ai_provider"))
-    if not data:
-        return
-        
-    for fieldname, value in data.items():
-        if not value: continue
-        
-        if fieldname == "items" and isinstance(value, list):
-            doc.set("items", [])
-            for item in value:
-                if item.get("item_code") or item.get("item_name") or item.get("description"):
-                    row = doc.append("items", {})
-                    for item_field in ["item_code", "delivery_date", "item_name", "description", "qty", "uom", "rate"]:
-                        if item.get(item_field):
-                            row.set(item_field, item.get(item_field))
-                            
-        elif fieldname in ["customer", "po_no", "delivery_date", "token_usage"]:
-            if not doc.get(fieldname):
-                doc.set(fieldname, value)
+    try:
+        if not _should_auto_extract(doc, "ai_po_document"):
+            return
+
+        file_url = doc.ai_po_document
+        data = process_sales_order_document(file_url, doc.get("ai_provider"))
+        if not data:
+            return
+
+        for fieldname, value in data.items():
+            if not value:
+                continue
+
+            if fieldname == "items" and isinstance(value, list):
+                doc.set("items", [])
+                for item in value:
+                    if item.get("item_code") or item.get("item_name") or item.get("description"):
+                        row = doc.append("items", {})
+                        for item_field in ["item_code", "delivery_date", "item_name", "description", "qty", "uom", "rate"]:
+                            if item.get(item_field):
+                                row.set(item_field, item.get(item_field))
+
+            elif fieldname in ["customer", "po_no", "delivery_date", "token_usage"]:
+                if not doc.get(fieldname):
+                    doc.set(fieldname, value)
+    except Exception as e:
+        frappe.log_error(message=f"Sales Order Auto Extraction Error: {str(e)}", title="Sales Order Auto Extraction Error")
 
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
