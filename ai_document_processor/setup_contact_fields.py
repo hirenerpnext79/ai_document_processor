@@ -7,7 +7,7 @@ def setup_fields():
             {
                 "fieldname": "ai_id_document",
                 "label": "AI ID Document",
-                "fieldtype": "Attach Image",
+                "fieldtype": "Attach",
                 "insert_after": "image",
             },
 
