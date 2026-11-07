@@ -1,9 +1,7 @@
-# Copyright (c) 2026, Hns and contributors
-# For license information, please see license.txt
-
-# import frappe
 from frappe.model.document import Document
 
 
 class AIDocument(Document):
-	pass
+    def validate(self):
+        if not self.document_type:
+            self.document_type = "PDF"

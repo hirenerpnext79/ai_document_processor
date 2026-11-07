@@ -9,6 +9,7 @@
  "field_order": [
   "naming_series",
   "title",
+  "document_type",
   "pdf_file",
   "provider",
   "prompt",
@@ -41,9 +42,18 @@
    "reqd": 1
   },
   {
+   "default": "PDF",
+   "fieldname": "document_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Document Type",
+   "options": "PDF\nImage\nExcel",
+   "reqd": 1
+  },
+  {
    "fieldname": "pdf_file",
    "fieldtype": "Attach",
-   "label": "PDF File"
+   "label": "Document File"
   },
   {
    "fieldname": "provider",
@@ -191,7 +201,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-01 14:57:11.630097",
+ "modified": "2026-11-07 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "AI Document Processor",
  "name": "AI Document",

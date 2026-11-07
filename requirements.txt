@@ -2,3 +2,5 @@ pymupdf
 requests
 pytesseract
 Pillow
+openpyxl
+xlrd

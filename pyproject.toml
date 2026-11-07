@@ -12,7 +12,9 @@ dependencies = [
     "pymupdf",
     "requests",
     "pytesseract",
-    "Pillow"
+    "Pillow",
+    "openpyxl",
+    "xlrd"
 ]
 
 [tool.bench.frappe-dependencies]
