@@ -10,6 +10,64 @@ from ai_document_processor.ai_services import generate
 from .utils import extract_document_text, get_file_content, get_file_extension
 
 
+def normalize_ai_metadata(data):
+    if not isinstance(data, dict):
+        return {}
+
+    normalized = {}
+    normalized_keys = {re.sub(r"[\s_\-/]+", "", str(k)).lower(): v for k, v in data.items()}
+
+    title_val = (
+        normalized_keys.get("doctitle")
+        or normalized_keys.get("title")
+        or normalized_keys.get("documenttitle")
+        or normalized_keys.get("name")
+        or ""
+    )
+    normalized["title"] = str(title_val).strip()
+
+    summary_val = (
+        normalized_keys.get("docshortsummary")
+        or normalized_keys.get("shortsummary")
+        or normalized_keys.get("summary")
+        or normalized_keys.get("docsummary")
+        or normalized_keys.get("description")
+        or ""
+    )
+    normalized["summary"] = str(summary_val).strip()
+
+    tags_val = (
+        normalized_keys.get("doctags")
+        or normalized_keys.get("tags")
+        or normalized_keys.get("keywords")
+        or normalized_keys.get("hashtags")
+        or []
+    )
+    if isinstance(tags_val, str):
+        tags_list = [t.strip() for t in re.split(r"[,;\n]+", tags_val) if t.strip()]
+    elif isinstance(tags_val, list):
+        tags_list = [str(t).strip() for t in tags_val if str(t).strip()]
+    else:
+        tags_list = []
+    normalized["tags"] = tags_list
+
+    date_val = (
+        normalized_keys.get("docdatetime")
+        or normalized_keys.get("datetime")
+        or normalized_keys.get("docdate")
+        or normalized_keys.get("date")
+        or normalized_keys.get("createddate")
+        or normalized_keys.get("documentdate")
+        or None
+    )
+    normalized["date"] = str(date_val).strip() if date_val else None
+
+    if "_usage" in data:
+        normalized["_usage"] = data["_usage"]
+
+    return normalized
+
+
 def parse_ai_json_response(response_text):
     if not response_text:
         return {}
@@ -20,16 +78,32 @@ def parse_ai_json_response(response_text):
         if match:
             clean_text = match.group(1).strip()
 
+    raw_dict = None
     try:
-        return json.loads(clean_text)
+        raw_dict = json.loads(clean_text)
     except Exception:
         first_brace = clean_text.find("{")
         last_brace = clean_text.rfind("}")
         if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
             try:
-                return json.loads(clean_text[first_brace : last_brace + 1])
+                raw_dict = json.loads(clean_text[first_brace : last_brace + 1])
             except Exception:
                 pass
+
+    if isinstance(raw_dict, dict):
+        return normalize_ai_metadata(raw_dict)
+
+    fallback_dict = {}
+    for line in clean_text.splitlines():
+        if ":" in line:
+            parts = line.split(":", 1)
+            k = parts[0].strip()
+            v = parts[1].strip()
+            if k and v:
+                fallback_dict[k] = v
+
+    if fallback_dict:
+        return normalize_ai_metadata(fallback_dict)
 
     return {}
 
@@ -163,18 +237,24 @@ def resolve_doc_datetime(file_url, ai_date_str=None, file_doc=None, content=None
 
 
 def get_ai_prompt(custom_prompt=None):
+    schema_instruction = (
+        "\n\nRespond strictly with valid JSON using the following keys:\n"
+        "{\n"
+        '  "doc_title": "A concise and descriptive document title",\n'
+        '  "doc_short_summary": "A 2 to 3 sentence summary of the key content, parties, and purpose",\n'
+        '  "doc_tags": ["tag1", "tag2", "tag3"],\n'
+        '  "doc_date_time": "YYYY-MM-DD HH:MM:SS or YYYY-MM-DD or null"\n'
+        "}\n"
+        "Do not include markdown code block formatting or extra commentary."
+    )
     if custom_prompt:
-        return custom_prompt
+        if "{" in custom_prompt and "}" in custom_prompt:
+            return custom_prompt
+        return f"{custom_prompt.strip()}{schema_instruction}"
 
     return (
-        "Analyze the provided document text and extract the following metadata in strict JSON format:\n"
-        "{\n"
-        '  "title": "A concise and descriptive document title",\n'
-        '  "summary": "A 2 to 3 sentence summary of the key content, parties, and purpose",\n'
-        '  "tags": ["tag1", "tag2", "tag3"],\n'
-        '  "date": "YYYY-MM-DD HH:MM:SS or YYYY-MM-DD (the primary date mentioned or created in the document, or null if not found)"\n'
-        "}\n"
-        "Respond ONLY with valid JSON. Do not include markdown code block formatting or extra commentary."
+        "Analyze the provided document text and extract the document metadata strictly as JSON."
+        + schema_instruction
     )
 
 
@@ -201,16 +281,28 @@ def execute_file_ai_generation(file_url, custom_prompt=None, provider_name=None)
     prompt_text = get_ai_prompt(custom_prompt)
     prompt_doc = frappe._dict(prompt=prompt_text)
 
+    candidate_models = [provider_doc.model, "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-lite-latest"]
+    tried_models = set()
     last_error = None
-    for attempt in range(3):
-        try:
-            ai_response_text, usage_metadata = generate(provider_doc, prompt_doc, extracted_text[:15000])
-            parsed_data = parse_ai_json_response(ai_response_text)
-            parsed_data["_usage"] = usage_metadata
-            return parsed_data
-        except Exception as e:
-            last_error = e
-            time.sleep(2)
+
+    for model_name in candidate_models:
+        if not model_name or model_name in tried_models:
+            continue
+        tried_models.add(model_name)
+        provider_doc.model = model_name
+
+        for attempt in range(2):
+            try:
+                ai_response_text, usage_metadata = generate(provider_doc, prompt_doc, extracted_text[:15000])
+                parsed_data = parse_ai_json_response(ai_response_text)
+                parsed_data["_usage"] = usage_metadata
+                return parsed_data
+            except Exception as e:
+                last_error = e
+                err_str = str(e).lower()
+                if "429" in err_str or "quota" in err_str or "exhausted" in err_str:
+                    break
+                time.sleep(1)
 
     frappe.log_error(title="File AI Generation Failed", message=str(last_error))
     return {}
@@ -281,12 +373,19 @@ def process_file_with_ai(file_source, prompt=None, ai_provider=None, save=True):
                 })
             frappe.db.commit()
 
+    tags_result = (
+        [t.strip() for t in file_doc.doc_tags.split(",") if t.strip()]
+        if file_doc and file_doc.doc_tags
+        else metadata.get("tags", [])
+    )
+    dt_result = str(file_doc.doc_datetime) if file_doc and file_doc.doc_datetime else metadata.get("date", "")
+
     return {
         "status": "Success",
-        "title": metadata.get("title", ""),
-        "summary": metadata.get("summary", ""),
-        "tags": metadata.get("tags", []),
-        "datetime": file_doc.doc_datetime if file_doc else metadata.get("date", ""),
+        "title": file_doc.doc_title if file_doc else metadata.get("title", ""),
+        "summary": file_doc.doc_short_summary if file_doc else metadata.get("summary", ""),
+        "tags": tags_result,
+        "datetime": dt_result,
         "usage": metadata.get("_usage", {})
     }
 

@@ -12,6 +12,7 @@ from ai_document_processor.file import (
     extract_actual_doc_created_date,
     resolve_doc_datetime,
     apply_ai_metadata_to_file,
+    normalize_ai_metadata,
 )
 import frappe
 
@@ -28,6 +29,32 @@ class TestAIDocument(unittest.TestCase):
         sample = '{"title": "Raw Title", "summary": "Raw Summary"}'
         result = parse_ai_json_response(sample)
         self.assertEqual(result.get("title"), "Raw Title")
+
+    def test_normalize_ai_metadata_custom_prompt_keys(self):
+        sample = {
+            "Doc Title": "Invoice Title",
+            "Doc Short Summary": "Detailed summary",
+            "Doc Tags": ["Tag1", "Tag2"],
+            "Doc Date/Time": "2026-09-30T00:00:00"
+        }
+        result = normalize_ai_metadata(sample)
+        self.assertEqual(result.get("title"), "Invoice Title")
+        self.assertEqual(result.get("summary"), "Detailed summary")
+        self.assertEqual(result.get("tags"), ["Tag1", "Tag2"])
+        self.assertEqual(result.get("date"), "2026-09-30T00:00:00")
+
+    def test_normalize_ai_metadata_snake_case(self):
+        sample = {
+            "doc_title": "Snake Title",
+            "doc_short_summary": "Snake summary",
+            "doc_tags": "TagA, TagB",
+            "doc_date_time": "2026-10-01"
+        }
+        result = normalize_ai_metadata(sample)
+        self.assertEqual(result.get("title"), "Snake Title")
+        self.assertEqual(result.get("summary"), "Snake summary")
+        self.assertEqual(result.get("tags"), ["TagA", "TagB"])
+        self.assertEqual(result.get("date"), "2026-10-01")
 
     def test_parse_pdf_date_property(self):
         pdf_date_str = "D:20260929142943+05'30'"
