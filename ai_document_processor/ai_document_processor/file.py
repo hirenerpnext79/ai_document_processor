@@ -4,6 +4,7 @@ import re
 import time
 import frappe
 from frappe import _
+from frappe.model.document import BaseDocument
 from frappe.utils import get_datetime, now_datetime
 from ai_document_processor.api import get_default_ai_provider
 from ai_document_processor.ai_services import generate
@@ -14,21 +15,15 @@ def get_clean_error_message(exception_obj):
     if not exception_obj:
         return _("Unknown error occurred")
 
-    resp = getattr(exception_obj, "response", None)
-    if resp is not None:
-        try:
-            err_json = resp.json()
-            if isinstance(err_json, dict) and "error" in err_json:
-                err_data = err_json["error"]
-                if isinstance(err_data, dict) and err_data.get("message"):
-                    return f"{err_data.get('code', resp.status_code)}: {err_data.get('message')}"
-                elif isinstance(err_data, str):
-                    return f"{resp.status_code}: {err_data}"
-        except Exception:
-            pass
-
-        if getattr(resp, "text", None):
-            return f"{resp.status_code}: {resp.text[:500]}"
+    try:
+        data = exception_obj.response.json()
+        err = data.get("error")
+        if err:
+            msg = err.get("message") if isinstance(err, dict) else str(err)
+            code = err.get("code") if isinstance(err, dict) else exception_obj.response.status_code
+            return f"{code}: {msg}"
+    except Exception:
+        pass
 
     return str(exception_obj)
 
@@ -37,53 +32,27 @@ def normalize_ai_metadata(data):
     if not isinstance(data, dict):
         return {}
 
-    normalized = {}
-    normalized_keys = {re.sub(r"[\s_\-/]+", "", str(k)).lower(): v for k, v in data.items()}
+    clean_keys = {re.sub(r"[\s_\-/]+", "", str(k)).lower(): v for k, v in data.items()}
 
-    title_val = (
-        normalized_keys.get("doctitle")
-        or normalized_keys.get("title")
-        or normalized_keys.get("documenttitle")
-        or normalized_keys.get("name")
-        or ""
-    )
-    normalized["title"] = str(title_val).strip()
+    title = clean_keys.get("doctitle") or clean_keys.get("title") or clean_keys.get("name") or ""
+    summary = clean_keys.get("docshortsummary") or clean_keys.get("summary") or clean_keys.get("description") or ""
 
-    summary_val = (
-        normalized_keys.get("docshortsummary")
-        or normalized_keys.get("shortsummary")
-        or normalized_keys.get("summary")
-        or normalized_keys.get("docsummary")
-        or normalized_keys.get("description")
-        or ""
-    )
-    normalized["summary"] = str(summary_val).strip()
-
-    tags_val = (
-        normalized_keys.get("doctags")
-        or normalized_keys.get("tags")
-        or normalized_keys.get("keywords")
-        or normalized_keys.get("hashtags")
-        or []
-    )
-    if isinstance(tags_val, str):
-        tags_list = [t.strip() for t in re.split(r"[,;\n]+", tags_val) if t.strip()]
-    elif isinstance(tags_val, list):
-        tags_list = [str(t).strip() for t in tags_val if str(t).strip()]
+    raw_tags = clean_keys.get("doctags") or clean_keys.get("tags") or clean_keys.get("keywords") or []
+    if isinstance(raw_tags, str):
+        tags = [t.strip() for t in re.split(r"[,;\n]+", raw_tags) if t.strip()]
+    elif isinstance(raw_tags, list):
+        tags = [str(t).strip() for t in raw_tags if str(t).strip()]
     else:
-        tags_list = []
-    normalized["tags"] = tags_list
+        tags = []
 
-    date_val = (
-        normalized_keys.get("docdatetime")
-        or normalized_keys.get("datetime")
-        or normalized_keys.get("docdate")
-        or normalized_keys.get("date")
-        or normalized_keys.get("createddate")
-        or normalized_keys.get("documentdate")
-        or None
-    )
-    normalized["date"] = str(date_val).strip() if date_val else None
+    date_val = clean_keys.get("docdatetime") or clean_keys.get("datetime") or clean_keys.get("date")
+
+    normalized = {
+        "title": str(title).strip(),
+        "summary": str(summary).strip(),
+        "tags": tags,
+        "date": str(date_val).strip() if date_val else None,
+    }
 
     if "_usage" in data:
         normalized["_usage"] = data["_usage"]
@@ -101,34 +70,26 @@ def parse_ai_json_response(response_text):
         if match:
             clean_text = match.group(1).strip()
 
-    raw_dict = None
     try:
-        raw_dict = json.loads(clean_text)
+        return normalize_ai_metadata(json.loads(clean_text))
     except Exception:
-        first_brace = clean_text.find("{")
-        last_brace = clean_text.rfind("}")
-        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-            try:
-                raw_dict = json.loads(clean_text[first_brace : last_brace + 1])
-            except Exception:
-                pass
+        pass
 
-    if isinstance(raw_dict, dict):
-        return normalize_ai_metadata(raw_dict)
+    first_brace = clean_text.find("{")
+    last_brace = clean_text.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        try:
+            return normalize_ai_metadata(json.loads(clean_text[first_brace : last_brace + 1]))
+        except Exception:
+            pass
 
-    fallback_dict = {}
+    fallback = {}
     for line in clean_text.splitlines():
         if ":" in line:
-            parts = line.split(":", 1)
-            k = parts[0].strip()
-            v = parts[1].strip()
-            if k and v:
-                fallback_dict[k] = v
+            k, v = line.split(":", 1)
+            fallback[k.strip()] = v.strip()
 
-    if fallback_dict:
-        return normalize_ai_metadata(fallback_dict)
-
-    return {}
+    return normalize_ai_metadata(fallback) if fallback else {}
 
 
 def parse_extracted_date(date_str):
@@ -136,8 +97,7 @@ def parse_extracted_date(date_str):
         return None
 
     try:
-        cleaned = str(date_str).strip()
-        return get_datetime(cleaned)
+        return get_datetime(str(date_str).strip())
     except Exception:
         pass
 
@@ -195,11 +155,11 @@ def extract_excel_doc_property_date(content):
         import io
         import openpyxl
         wb = openpyxl.load_workbook(filename=io.BytesIO(content), read_only=True)
-        props = getattr(wb, "properties", None)
+        props = wb.properties
         if props:
-            if getattr(props, "created", None):
+            if props.created:
                 return get_datetime(props.created)
-            if getattr(props, "modified", None):
+            if props.modified:
                 return get_datetime(props.modified)
     except Exception as e:
         frappe.log_error(title="Extract Excel Date Property Error", message=str(e))
@@ -211,16 +171,11 @@ def extract_image_doc_property_date(content):
         import io
         from PIL import Image
         img = Image.open(io.BytesIO(content))
-        exif_data = img.getexif() if hasattr(img, "getexif") else None
-        if exif_data:
-            for tag_id in [36867, 306, 36868]:
-                val = exif_data.get(tag_id)
-                if val:
-                    try:
-                        clean_val = str(val).strip().replace(":", "-", 2)
-                        return get_datetime(clean_val)
-                    except Exception:
-                        pass
+        exif_data = img.getexif()
+        for tag_id in [36867, 306, 36868]:
+            val = exif_data.get(tag_id)
+            if val:
+                return get_datetime(str(val).strip().replace(":", "-", 2))
     except Exception as e:
         frappe.log_error(title="Extract Image Date Property Error", message=str(e))
     return None
@@ -294,12 +249,7 @@ def execute_file_ai_generation(file_url, custom_prompt=None, provider_name=None)
 
     ai_provider = provider_name or get_default_ai_provider()
     if not ai_provider:
-        active_providers = frappe.get_all("AI Provider", filters={"is_active": 1}, pluck="name", limit=1)
-        if active_providers:
-            ai_provider = active_providers[0]
-
-    if not ai_provider:
-        return {"error": _("No enabled AI Provider found")}
+        frappe.throw(_("No enabled AI Provider found"))
 
     provider_doc = frappe.get_doc("AI Provider", ai_provider)
     prompt_text = get_ai_prompt(custom_prompt)
@@ -351,7 +301,7 @@ def apply_ai_metadata_to_file(doc, metadata, file_url=None):
 
 
 def resolve_file_doc(file_source):
-    if hasattr(file_source, "doctype") and file_source.doctype == "File":
+    if isinstance(file_source, BaseDocument):
         return file_source
 
     if isinstance(file_source, str):
@@ -372,11 +322,7 @@ def process_file_with_ai(file_source, prompt=None, ai_provider=None, save=True):
 
     selected_prompt = prompt
     if not selected_prompt and file_doc and file_doc.prompt:
-        prompt_val = file_doc.prompt
-        if frappe.db.exists("AI Prompt", prompt_val):
-            selected_prompt = frappe.db.get_value("AI Prompt", prompt_val, "prompt")
-        else:
-            selected_prompt = prompt_val
+        selected_prompt = frappe.db.get_value("AI Prompt", file_doc.prompt, "prompt") or file_doc.prompt
 
     metadata = execute_file_ai_generation(file_url, custom_prompt=selected_prompt, provider_name=ai_provider)
     if not metadata or metadata.get("error"):
@@ -433,10 +379,7 @@ def should_auto_process_file(doc):
     if doc.file_url != doc_before_save.file_url:
         return True
 
-    if not doc.doc_title:
-        return True
-
-    return False
+    return not doc.doc_title
 
 
 def auto_process_file_with_ai(doc, method=None):
