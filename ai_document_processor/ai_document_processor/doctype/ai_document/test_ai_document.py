@@ -4,6 +4,7 @@ import unittest
 import openpyxl
 from PIL import Image
 from ai_document_processor.file import (
+    get_clean_error_message,
     parse_ai_json_response,
     parse_extracted_date,
     parse_pdf_date_property,
@@ -18,6 +19,24 @@ import frappe
 
 
 class TestAIDocument(unittest.TestCase):
+    def test_get_clean_error_message_plain(self):
+        err = Exception("Connection timed out")
+        msg = get_clean_error_message(err)
+        self.assertEqual(msg, "Connection timed out")
+
+    def test_get_clean_error_message_http(self):
+        class FakeResponse:
+            status_code = 429
+            text = "Rate limit"
+            def json(self):
+                return {"error": {"code": 429, "message": "Daily quota exceeded"}}
+
+        class FakeHTTPError(Exception):
+            response = FakeResponse()
+
+        msg = get_clean_error_message(FakeHTTPError("429 Client Error"))
+        self.assertEqual(msg, "429: Daily quota exceeded")
+
     def test_parse_ai_json_response_with_codeblock(self):
         sample = '```json\n{"title": "Test Title", "summary": "Test Summary", "tags": ["a", "b"]}\n```'
         result = parse_ai_json_response(sample)

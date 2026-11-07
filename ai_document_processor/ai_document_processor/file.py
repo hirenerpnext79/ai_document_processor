@@ -10,6 +10,29 @@ from ai_document_processor.ai_services import generate
 from .utils import extract_document_text, get_file_content, get_file_extension
 
 
+def get_clean_error_message(exception_obj):
+    if not exception_obj:
+        return _("Unknown error occurred")
+
+    resp = getattr(exception_obj, "response", None)
+    if resp is not None:
+        try:
+            err_json = resp.json()
+            if isinstance(err_json, dict) and "error" in err_json:
+                err_data = err_json["error"]
+                if isinstance(err_data, dict) and err_data.get("message"):
+                    return f"{err_data.get('code', resp.status_code)}: {err_data.get('message')}"
+                elif isinstance(err_data, str):
+                    return f"{resp.status_code}: {err_data}"
+        except Exception:
+            pass
+
+        if getattr(resp, "text", None):
+            return f"{resp.status_code}: {resp.text[:500]}"
+
+    return str(exception_obj)
+
+
 def normalize_ai_metadata(data):
     if not isinstance(data, dict):
         return {}
@@ -262,11 +285,12 @@ def execute_file_ai_generation(file_url, custom_prompt=None, provider_name=None)
     try:
         extracted_text = extract_document_text(file_url)
     except Exception as e:
-        frappe.log_error(title="File Text Extraction Failed", message=str(e))
-        return {}
+        err_msg = get_clean_error_message(e)
+        frappe.log_error(title="File Text Extraction Failed", message=err_msg)
+        return {"error": f"{_('Text Extraction Failed')}: {err_msg}"}
 
     if not extracted_text:
-        return {}
+        return {"error": _("No readable text could be extracted from this document.")}
 
     ai_provider = provider_name or get_default_ai_provider()
     if not ai_provider:
@@ -275,7 +299,7 @@ def execute_file_ai_generation(file_url, custom_prompt=None, provider_name=None)
             ai_provider = active_providers[0]
 
     if not ai_provider:
-        frappe.throw(_("No enabled AI Provider found"))
+        return {"error": _("No enabled AI Provider found")}
 
     provider_doc = frappe.get_doc("AI Provider", ai_provider)
     prompt_text = get_ai_prompt(custom_prompt)
@@ -304,8 +328,9 @@ def execute_file_ai_generation(file_url, custom_prompt=None, provider_name=None)
                     break
                 time.sleep(1)
 
-    frappe.log_error(title="File AI Generation Failed", message=str(last_error))
-    return {}
+    clean_err = get_clean_error_message(last_error)
+    frappe.log_error(title="File AI Generation Failed", message=clean_err)
+    return {"error": clean_err}
 
 
 def apply_ai_metadata_to_file(doc, metadata, file_url=None):
@@ -343,7 +368,7 @@ def process_file_with_ai(file_source, prompt=None, ai_provider=None, save=True):
     file_url = file_doc.file_url if file_doc else (file_source if isinstance(file_source, str) else None)
 
     if not file_url:
-        return {"status": "Failed", "error": "No file URL found"}
+        return {"status": "Failed", "error": _("No file URL found")}
 
     selected_prompt = prompt
     if not selected_prompt and file_doc and file_doc.prompt:
@@ -354,8 +379,9 @@ def process_file_with_ai(file_source, prompt=None, ai_provider=None, save=True):
             selected_prompt = prompt_val
 
     metadata = execute_file_ai_generation(file_url, custom_prompt=selected_prompt, provider_name=ai_provider)
-    if not metadata:
-        return {"status": "Failed", "error": "AI could not generate metadata"}
+    if not metadata or metadata.get("error"):
+        error_message = metadata.get("error") if metadata else _("AI could not generate metadata")
+        return {"status": "Failed", "error": error_message}
 
     if file_doc:
         apply_ai_metadata_to_file(file_doc, metadata, file_url=file_url)
