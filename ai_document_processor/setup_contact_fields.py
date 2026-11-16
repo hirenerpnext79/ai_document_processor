@@ -93,6 +93,7 @@ def setup_fields():
                 "options": "AI Prompt",
                 "insert_after": "is_processed_with_ai",
                 "depends_on": "eval:doc.is_processed_with_ai",
+                "mandatory_depends_on": "eval:doc.is_processed_with_ai",
             },
             {
                 "fieldname": "ai_doc_info",
@@ -132,6 +133,13 @@ def setup_fields():
                 "label": "Doc Short Summary",
                 "fieldtype": "Small Text",
                 "insert_after": "doc_datetime",
+                "read_only": 1,
+            },
+            {
+                "fieldname": "token_usage",
+                "label": "Token Usage",
+                "fieldtype": "JSON",
+                "insert_after": "doc_short_summary",
                 "read_only": 1,
             },
         ],

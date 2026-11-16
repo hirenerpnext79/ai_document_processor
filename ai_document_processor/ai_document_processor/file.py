@@ -1,6 +1,9 @@
 import datetime
+import glob
 import json
+import os
 import re
+import subprocess
 import time
 import frappe
 from frappe import _
@@ -57,6 +60,9 @@ def normalize_ai_metadata(data):
     if "_usage" in data:
         normalized["_usage"] = data["_usage"]
 
+    if "_final_prompt" in data:
+        normalized["_final_prompt"] = data["_final_prompt"]
+
     return normalized
 
 
@@ -92,19 +98,60 @@ def parse_ai_json_response(response_text):
     return normalize_ai_metadata(fallback) if fallback else {}
 
 
+def to_naive_datetime(dt):
+    if not dt:
+        return None
+
+    try:
+        if isinstance(dt, str):
+            clean_str = dt.strip()
+            try:
+                dt = get_datetime(clean_str)
+            except Exception:
+                digits = re.sub(r"\D", "", clean_str[:16])
+                if len(digits) >= 8:
+                    dt = get_datetime(digits[:8])
+
+        if isinstance(dt, datetime.datetime):
+            if dt.tzinfo is not None:
+                try:
+                    from frappe.utils import convert_utc_to_system_timezone
+                    dt = convert_utc_to_system_timezone(dt)
+                except Exception:
+                    try:
+                        dt = dt.astimezone()
+                    except Exception:
+                        pass
+                if getattr(dt, "tzinfo", None) is not None:
+                    dt = dt.replace(tzinfo=None)
+            return dt
+
+        if isinstance(dt, datetime.date):
+            return datetime.datetime.combine(dt, datetime.time.min)
+    except Exception:
+        pass
+
+    return None
+
+
 def parse_extracted_date(date_str):
     if not date_str:
         return None
 
+    clean_str = str(date_str).strip()
     try:
-        return get_datetime(str(date_str).strip())
+        dt = get_datetime(clean_str)
+        if dt:
+            return to_naive_datetime(dt)
     except Exception:
         pass
 
     try:
-        digits = re.sub(r"\D", "", str(date_str)[:16])
+        digits = re.sub(r"\D", "", clean_str[:16])
         if len(digits) >= 8:
-            return get_datetime(digits[:8])
+            dt = get_datetime(digits[:8])
+            if dt:
+                return to_naive_datetime(dt)
     except Exception:
         pass
 
@@ -158,81 +205,263 @@ def extract_excel_doc_property_date(content):
         props = wb.properties
         if props:
             if props.created:
-                return get_datetime(props.created)
+                return to_naive_datetime(props.created)
             if props.modified:
-                return get_datetime(props.modified)
+                return to_naive_datetime(props.modified)
     except Exception as e:
         frappe.log_error(title="Extract Excel Date Property Error", message=str(e))
     return None
+
+
+def parse_image_exif_date(date_val):
+    if not date_val:
+        return None
+
+    try:
+        clean = str(date_val).strip()
+        if re.match(r"^\d{4}:\d{2}:\d{2}", clean):
+            clean = clean.replace(":", "-", 2)
+        return to_naive_datetime(get_datetime(clean))
+    except Exception:
+        pass
+
+    return parse_extracted_date(date_val)
 
 
 def extract_image_doc_property_date(content):
     try:
         import io
         from PIL import Image
+
         img = Image.open(io.BytesIO(content))
-        exif_data = img.getexif()
-        for tag_id in [36867, 306, 36868]:
-            val = exif_data.get(tag_id)
+
+        if hasattr(img, "_getexif"):
+            try:
+                raw_exif = img._getexif()
+                if raw_exif:
+                    for tag_id in [36867, 36868, 306]:
+                        val = raw_exif.get(tag_id)
+                        if val:
+                            dt = parse_image_exif_date(val)
+                            if dt:
+                                return dt
+            except Exception:
+                pass
+
+        if hasattr(img, "getexif"):
+            try:
+                exif = img.getexif()
+                if exif:
+                    for tag_id in [36867, 36868, 306]:
+                        val = exif.get(tag_id)
+                        if val:
+                            dt = parse_image_exif_date(val)
+                            if dt:
+                                return dt
+
+                    sub_ifd = exif.get_ifd(0x8769)
+                    if sub_ifd:
+                        for tag_id in [36867, 36868, 306]:
+                            val = sub_ifd.get(tag_id)
+                            if val:
+                                dt = parse_image_exif_date(val)
+                                if dt:
+                                    return dt
+            except Exception:
+                pass
+
+        info = getattr(img, "info", {}) or {}
+        for key in ["Creation Time", "date:create", "date:modify", "timestamp"]:
+            val = info.get(key)
             if val:
-                return get_datetime(str(val).strip().replace(":", "-", 2))
+                dt = parse_extracted_date(val)
+                if dt:
+                    return dt
     except Exception as e:
         frappe.log_error(title="Extract Image Date Property Error", message=str(e))
+
     return None
 
 
-def extract_actual_doc_created_date(file_url, content=None):
-    if not content:
-        content = get_file_content(file_url)
-    if not content:
+def extract_openxml_doc_property_date(content):
+    try:
+        import io
+        import zipfile
+        import xml.etree.ElementTree as ET
+
+        with zipfile.ZipFile(io.BytesIO(content)) as z:
+            if "docProps/core.xml" in z.namelist():
+                xml_data = z.read("docProps/core.xml")
+                root = ET.fromstring(xml_data)
+                for elem in root.iter():
+                    if elem.tag.endswith("created") and elem.text:
+                        dt = parse_extracted_date(elem.text.strip())
+                        if dt:
+                            return dt
+                    if elem.tag.endswith("modified") and elem.text:
+                        dt = parse_extracted_date(elem.text.strip())
+                        if dt:
+                            return dt
+    except Exception as e:
+        frappe.log_error(title="Extract OpenXML Date Property Error", message=str(e))
+
+    return None
+
+
+def get_windows_file_creation_time(file_name):
+    if not file_name:
         return None
 
-    ext = get_file_extension(file_url)
-    if ext == ".pdf":
-        return extract_pdf_doc_property_date(content)
-    elif ext in [".xlsx", ".xlsm"]:
-        return extract_excel_doc_property_date(content)
-    elif ext in [".jpg", ".jpeg", ".png", ".webp", ".tiff", ".tif"]:
-        return extract_image_doc_property_date(content)
+    try:
+        patterns = []
+        if os.name == "nt":
+            user_profile = os.environ.get("USERPROFILE", "")
+            if user_profile:
+                for folder in ["Downloads", "Desktop", "Pictures", "Documents"]:
+                    patterns.append(os.path.join(user_profile, folder, file_name))
+        else:
+            for folder in ["Downloads", "Desktop", "Pictures", "Documents"]:
+                patterns.append(f"/mnt/c/Users/*/{folder}/{file_name}")
+
+        candidates = []
+        for pat in patterns:
+            if "*" in pat:
+                candidates.extend(glob.glob(pat))
+            elif os.path.exists(pat):
+                candidates.append(pat)
+
+        for cand in candidates:
+            if os.path.exists(cand):
+                if os.name == "nt":
+                    st = os.stat(cand)
+                    return datetime.datetime.fromtimestamp(st.st_ctime)
+
+                win_path = cand.replace("/mnt/c/", "C:\\").replace("/", "\\")
+                cmd = [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-Command",
+                    f"(Get-Item '{win_path}').CreationTime.ToString('yyyy-MM-dd HH:mm:ss')",
+                ]
+                out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+                if out:
+                    return get_datetime(out)
+    except Exception as e:
+        frappe.log_error(title="Get Windows Creation Time Error", message=str(e))
 
     return None
 
 
-def resolve_doc_datetime(file_url, ai_date_str=None, file_doc=None, content=None):
-    actual_doc_date = extract_actual_doc_created_date(file_url, content=content)
+def get_disk_file_time(file_url):
+    if not file_url:
+        return None
+
+    try:
+        full_path = None
+        if frappe.db.exists("File", {"file_url": file_url}):
+            f_doc = frappe.get_doc("File", {"file_url": file_url})
+            try:
+                p = f_doc.get_full_path()
+                if p and os.path.exists(p):
+                    full_path = p
+            except Exception:
+                pass
+
+        if not full_path:
+            clean_path = str(file_url).lstrip("/")
+            for prefix in ["public", "private", ""]:
+                p = frappe.get_site_path(prefix, clean_path) if prefix else frappe.get_site_path(clean_path)
+                if os.path.exists(p) and os.path.isfile(p):
+                    full_path = p
+                    break
+
+        if full_path and os.path.exists(full_path):
+            try:
+                out = subprocess.check_output(
+                    ["stat", "-c", "%w", full_path],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                ).strip()
+                if out and out != "-":
+                    dt = parse_extracted_date(out[:19])
+                    if dt:
+                        return dt
+            except Exception:
+                pass
+
+            st = os.stat(full_path)
+            if hasattr(st, "st_birthtime"):
+                return datetime.datetime.fromtimestamp(st.st_birthtime)
+            return datetime.datetime.fromtimestamp(st.st_mtime)
+    except Exception as e:
+        frappe.log_error(title="Get Disk File Time Error", message=str(e))
+
+    return None
+
+
+def extract_actual_doc_created_date(file_url, content=None, file_name=None):
+    if not content:
+        content = get_file_content(file_url)
+
+    ext = get_file_extension(file_url)
+    if content:
+        if ext == ".pdf":
+            dt = extract_pdf_doc_property_date(content)
+            if dt:
+                return to_naive_datetime(dt)
+        elif ext in [".xlsx", ".xlsm"]:
+            dt = extract_excel_doc_property_date(content)
+            if dt:
+                return to_naive_datetime(dt)
+        elif ext in [".docx", ".pptx"]:
+            dt = extract_openxml_doc_property_date(content)
+            if dt:
+                return to_naive_datetime(dt)
+        elif ext in [".jpg", ".jpeg", ".png", ".webp", ".tiff", ".tif"]:
+            dt = extract_image_doc_property_date(content)
+            if dt:
+                return to_naive_datetime(dt)
+
+    check_name = file_name or (os.path.basename(file_url) if file_url else None)
+    if check_name:
+        win_dt = get_windows_file_creation_time(check_name)
+        if win_dt:
+            return to_naive_datetime(win_dt)
+
+    disk_date = get_disk_file_time(file_url)
+    if disk_date:
+        return to_naive_datetime(disk_date)
+
+    return None
+
+
+def resolve_doc_datetime(file_url, ai_date_str=None, file_doc=None, content=None, **kwargs):
+    file_name = file_doc.file_name if file_doc else None
+    actual_doc_date = extract_actual_doc_created_date(file_url, content=content, file_name=file_name)
     if actual_doc_date:
-        return actual_doc_date
+        return to_naive_datetime(actual_doc_date)
 
     if ai_date_str:
         ai_dt = parse_extracted_date(ai_date_str)
         if ai_dt:
-            return ai_dt
+            return to_naive_datetime(ai_dt)
 
     if file_doc and file_doc.creation:
-        return file_doc.creation
+        return to_naive_datetime(file_doc.creation)
 
-    return now_datetime()
+    try:
+        return to_naive_datetime(now_datetime())
+    except Exception:
+        return datetime.datetime.now()
 
 
 def get_ai_prompt(custom_prompt=None):
-    schema_instruction = (
-        "\n\nRespond strictly with valid JSON using the following keys:\n"
-        "{\n"
-        '  "doc_title": "A concise and descriptive document title",\n'
-        '  "doc_short_summary": "A 2 to 3 sentence summary of the key content, parties, and purpose",\n'
-        '  "doc_tags": ["tag1", "tag2", "tag3"],\n'
-        '  "doc_date_time": "YYYY-MM-DD HH:MM:SS or YYYY-MM-DD or null"\n'
-        "}\n"
-        "Do not include markdown code block formatting or extra commentary."
-    )
     if custom_prompt:
-        if "{" in custom_prompt and "}" in custom_prompt:
-            return custom_prompt
-        return f"{custom_prompt.strip()}{schema_instruction}"
+        return custom_prompt.strip()
 
     return (
-        "Analyze the provided document text and extract the document metadata strictly as JSON."
-        + schema_instruction
+        "Analyze the provided document text and extract the document metadata as JSON with "
+        "doc_title, doc_short_summary, doc_tags, doc_date_time."
     )
 
 
@@ -270,6 +499,7 @@ def execute_file_ai_generation(file_url, custom_prompt=None, provider_name=None)
                 ai_response_text, usage_metadata = generate(provider_doc, prompt_doc, extracted_text[:15000])
                 parsed_data = parse_ai_json_response(ai_response_text)
                 parsed_data["_usage"] = usage_metadata
+                parsed_data["_final_prompt"] = prompt_text
                 return parsed_data
             except Exception as e:
                 last_error = e
@@ -288,6 +518,7 @@ def apply_ai_metadata_to_file(doc, metadata, file_url=None):
     summary = metadata.get("summary", "")
     tags = metadata.get("tags", [])
     date_val = metadata.get("date", "")
+    usage_data = metadata.get("_usage", {})
 
     formatted_tags = ", ".join(tags) if isinstance(tags, list) else str(tags)
     url = file_url or doc.file_url
@@ -296,8 +527,9 @@ def apply_ai_metadata_to_file(doc, metadata, file_url=None):
     doc.doc_title = title
     doc.doc_short_summary = summary
     doc.doc_tags = formatted_tags
-    doc.doc_datetime = formatted_dt
+    doc.doc_datetime = to_naive_datetime(formatted_dt)
     doc.is_processed_with_ai = 1
+    doc.token_usage = json.dumps(usage_data, indent=2) if usage_data else ""
 
 
 def resolve_file_doc(file_source):
@@ -320,14 +552,20 @@ def process_file_with_ai(file_source, prompt=None, ai_provider=None, save=True):
     if not file_url:
         return {"status": "Failed", "error": _("No file URL found")}
 
-    selected_prompt = prompt
-    if not selected_prompt and file_doc and file_doc.prompt:
-        selected_prompt = frappe.db.get_value("AI Prompt", file_doc.prompt, "prompt") or file_doc.prompt
+    raw_prompt = prompt or (file_doc.prompt if file_doc else None)
+    selected_prompt = None
+    if raw_prompt:
+        selected_prompt = frappe.db.get_value("AI Prompt", raw_prompt, "prompt") or raw_prompt
 
     metadata = execute_file_ai_generation(file_url, custom_prompt=selected_prompt, provider_name=ai_provider)
+    final_prompt = metadata.get("_final_prompt", selected_prompt) if metadata else selected_prompt
     if not metadata or metadata.get("error"):
         error_message = metadata.get("error") if metadata else _("AI could not generate metadata")
-        return {"status": "Failed", "error": error_message}
+        return {
+            "status": "Failed",
+            "error": error_message,
+            "prompt": final_prompt
+        }
 
     if file_doc:
         apply_ai_metadata_to_file(file_doc, metadata, file_url=file_url)
@@ -340,7 +578,8 @@ def process_file_with_ai(file_source, prompt=None, ai_provider=None, save=True):
                     "doc_title": file_doc.doc_title,
                     "doc_short_summary": file_doc.doc_short_summary,
                     "doc_tags": file_doc.doc_tags,
-                    "doc_datetime": file_doc.doc_datetime,
+                    "doc_datetime": to_naive_datetime(file_doc.doc_datetime),
+                    "token_usage": file_doc.token_usage,
                     "is_processed_with_ai": 1
                 })
             frappe.db.commit()
@@ -350,7 +589,8 @@ def process_file_with_ai(file_source, prompt=None, ai_provider=None, save=True):
         if file_doc and file_doc.doc_tags
         else metadata.get("tags", [])
     )
-    dt_result = str(file_doc.doc_datetime) if file_doc and file_doc.doc_datetime else metadata.get("date", "")
+    dt_result = str(to_naive_datetime(file_doc.doc_datetime)) if file_doc and file_doc.doc_datetime else str(resolve_doc_datetime(file_url, ai_date_str=metadata.get("date")))
+    usage_data = metadata.get("_usage", {})
 
     return {
         "status": "Success",
@@ -358,7 +598,9 @@ def process_file_with_ai(file_source, prompt=None, ai_provider=None, save=True):
         "summary": file_doc.doc_short_summary if file_doc else metadata.get("summary", ""),
         "tags": tags_result,
         "datetime": dt_result,
-        "usage": metadata.get("_usage", {})
+        "prompt": final_prompt,
+        "usage": usage_data,
+        "token_usage": file_doc.token_usage if file_doc else usage_data
     }
 
 

@@ -3,18 +3,32 @@ frappe.ui.form.on('File', {
         toggle_prompt_field(frm);
         if (!frm.is_new() && frm.doc.file_url && !frm.doc.is_folder) {
             frm.add_custom_button(__('Process with AI'), function () {
+                if (frm.doc.is_processed_with_ai && !frm.doc.prompt) {
+                    frappe.msgprint({
+                        title: __('Missing Prompt'),
+                        message: __('Prompt is required when "Is Processed With AI?" is checked.'),
+                        indicator: 'orange'
+                    });
+                    return;
+                }
                 process_file_with_ai_action(frm);
-            }).addClass('btn-primary');
+            });
         }
     },
     is_processed_with_ai: function (frm) {
         toggle_prompt_field(frm);
+    },
+    validate: function (frm) {
+        if (frm.doc.is_processed_with_ai && !frm.doc.prompt) {
+            frappe.throw(__('Prompt is required when "Is Processed With AI?" is checked.'));
+        }
     }
 });
 
 function toggle_prompt_field(frm) {
     const is_checked = Boolean(frm.doc.is_processed_with_ai);
     frm.toggle_display('prompt', is_checked);
+    frm.toggle_reqd('prompt', is_checked);
 }
 
 function process_file_with_ai_action(frm) {

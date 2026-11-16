@@ -9,11 +9,13 @@ from ai_document_processor.file import (
     parse_extracted_date,
     parse_pdf_date_property,
     extract_excel_doc_property_date,
+    extract_openxml_doc_property_date,
     extract_image_doc_property_date,
     extract_actual_doc_created_date,
     resolve_doc_datetime,
     apply_ai_metadata_to_file,
     normalize_ai_metadata,
+    to_naive_datetime,
 )
 import frappe
 
@@ -135,3 +137,24 @@ class TestAIDocument(unittest.TestCase):
         self.assertEqual(fake_file.doc_tags, "Finance, Tax")
         self.assertEqual(fake_file.is_processed_with_ai, 1)
         self.assertEqual(str(fake_file.doc_datetime), "2026-07-20 10:00:00")
+
+    def test_to_naive_datetime_timezone_stripped(self):
+        tz_dt = datetime.datetime(2026, 11, 16, 12, 24, tzinfo=datetime.timezone.utc)
+        naive = to_naive_datetime(tz_dt)
+        self.assertIsNotNone(naive)
+        self.assertIsNone(naive.tzinfo)
+
+    def test_parse_extracted_date_iso_with_tz(self):
+        dt = parse_extracted_date("2026-11-16T12:24:00+00:00")
+        self.assertIsNotNone(dt)
+        self.assertIsNone(dt.tzinfo)
+
+    def test_extract_openxml_doc_property_date(self):
+        import zipfile
+        xml_content = b'<?xml version="1.0" encoding="UTF-8"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dcterms="http://purl.org/dc/terms/"><dcterms:created>2026-11-16T12:24:00Z</dcterms:created></cp:coreProperties>'
+        bio = io.BytesIO()
+        with zipfile.ZipFile(bio, "w") as z:
+            z.writestr("docProps/core.xml", xml_content)
+        dt = extract_openxml_doc_property_date(bio.getvalue())
+        self.assertIsNotNone(dt)
+        self.assertIsNone(dt.tzinfo)
