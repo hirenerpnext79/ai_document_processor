@@ -162,12 +162,58 @@ def extract_image_text(file_url):
         frappe.throw(_("Failed to extract text from Image: {0}").format(str(e)))
 
 
-def extract_csv_text(content):
+def is_xlsx_content(content):
+    return isinstance(content, (bytes, bytearray)) and content.startswith((b"PK\x03\x04", b"PK\x05\x06"))
+
+
+def is_xls_content(content):
+    return isinstance(content, (bytes, bytearray)) and content.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")
+
+
+def format_sheets_as_text(sheets_data):
+    output_lines = []
+    for sheet_name, rows in sheets_data:
+        output_lines.append(f"=== Sheet: {sheet_name} ===")
+        csv_buf = io.StringIO()
+        writer = csv.writer(csv_buf, lineterminator="\n")
+        for r in rows:
+            writer.writerow(r)
+        output_lines.append(csv_buf.getvalue().strip())
+        output_lines.append("")
+    return "\n".join(output_lines).strip()
+
+
+def read_xlsx_sheets(content, data_only=True):
+    import openpyxl
+
+    wb = openpyxl.load_workbook(filename=io.BytesIO(content), data_only=data_only, read_only=True)
     try:
-        try:
-            decoded = content.decode("utf-8")
-        except UnicodeDecodeError:
-            decoded = content.decode("latin-1", errors="replace")
+        sheets_data = []
+        for sheet_name in wb.sheetnames:
+            sheet = wb[sheet_name]
+            rows = []
+            for row in sheet.iter_rows(values_only=True):
+                if row and any(c is not None and str(c).strip() != "" for c in row):
+                    rows.append([str(c).strip() if c is not None else "" for c in row])
+            if rows:
+                sheets_data.append((sheet_name, rows))
+        return sheets_data
+    finally:
+        wb.close()
+
+
+def extract_csv_text(content):
+    if is_xlsx_content(content) or is_xls_content(content):
+        frappe.throw(_("Binary Excel file cannot be parsed as CSV."))
+
+    try:
+        if isinstance(content, str):
+            decoded = content
+        else:
+            try:
+                decoded = content.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                decoded = content.decode("latin-1", errors="replace")
 
         stream = io.StringIO(decoded)
         reader = csv.reader(stream)
@@ -180,10 +226,12 @@ def extract_csv_text(content):
             frappe.throw(_("CSV file is empty or contains no readable data."))
 
         output = io.StringIO()
-        writer = csv.writer(output)
+        writer = csv.writer(output, lineterminator="\n")
         for r in rows:
             writer.writerow(r)
         return output.getvalue().strip()
+    except frappe.ValidationError:
+        raise
     except Exception as e:
         frappe.log_error(title="CSV Extraction Failed", message=str(e))
         frappe.throw(_("Failed to extract data from CSV: {0}").format(str(e)))
@@ -197,31 +245,16 @@ def extract_xlsx_text(content):
         frappe.throw(_("openpyxl library is not installed. Please run 'pip install openpyxl'."))
 
     try:
-        wb = openpyxl.load_workbook(filename=io.BytesIO(content), data_only=True, read_only=True)
-        sheets_data = []
-        for sheet_name in wb.sheetnames:
-            sheet = wb[sheet_name]
-            rows = []
-            for row in sheet.iter_rows(values_only=True):
-                if row and any(c is not None and str(c).strip() != "" for c in row):
-                    rows.append([str(c).strip() if c is not None else "" for c in row])
-            if rows:
-                sheets_data.append((sheet_name, rows))
+        sheets_data = read_xlsx_sheets(content, data_only=True)
+        if not sheets_data:
+            sheets_data = read_xlsx_sheets(content, data_only=False)
 
         if not sheets_data:
             frappe.throw(_("Excel file contains no readable data."))
 
-        output_lines = []
-        for sheet_name, rows in sheets_data:
-            output_lines.append(f"=== Sheet: {sheet_name} ===")
-            csv_buf = io.StringIO()
-            writer = csv.writer(csv_buf)
-            for r in rows:
-                writer.writerow(r)
-            output_lines.append(csv_buf.getvalue().strip())
-            output_lines.append("")
-
-        return "\n".join(output_lines).strip()
+        return format_sheets_as_text(sheets_data)
+    except frappe.ValidationError:
+        raise
     except Exception as e:
         frappe.log_error(title="Excel XLSX Extraction Failed", message=str(e))
         frappe.throw(_("Failed to extract data from Excel file: {0}").format(str(e)))
@@ -249,17 +282,9 @@ def extract_xls_text(content):
         if not sheets_data:
             frappe.throw(_("Excel file contains no readable data."))
 
-        output_lines = []
-        for sheet_name, rows in sheets_data:
-            output_lines.append(f"=== Sheet: {sheet_name} ===")
-            csv_buf = io.StringIO()
-            writer = csv.writer(csv_buf)
-            for r in rows:
-                writer.writerow(r)
-            output_lines.append(csv_buf.getvalue().strip())
-            output_lines.append("")
-
-        return "\n".join(output_lines).strip()
+        return format_sheets_as_text(sheets_data)
+    except frappe.ValidationError:
+        raise
     except Exception as e:
         frappe.log_error(title="Excel XLS Extraction Failed", message=str(e))
         frappe.throw(_("Failed to extract data from XLS file: {0}").format(str(e)))
@@ -270,22 +295,20 @@ def extract_excel_text(file_url):
     if not content:
         frappe.throw(_("File not found or empty: {0}").format(file_url))
 
+    if is_xlsx_content(content):
+        return extract_xlsx_text(content)
+    if is_xls_content(content):
+        return extract_xls_text(content)
+
     ext = get_file_extension(file_url)
     if ext == ".csv":
         return extract_csv_text(content)
-    elif ext == ".xls":
-        try:
-            return extract_xls_text(content)
-        except Exception:
-            return extract_xlsx_text(content)
-    else:
-        try:
-            return extract_xlsx_text(content)
-        except Exception:
-            try:
-                return extract_xls_text(content)
-            except Exception:
-                return extract_csv_text(content)
+    if ext == ".xls":
+        return extract_xls_text(content)
+    if ext in [".xlsx", ".xlsm"]:
+        return extract_xlsx_text(content)
+
+    return extract_csv_text(content)
 
 
 def extract_document_text(file_url, document_type=None):

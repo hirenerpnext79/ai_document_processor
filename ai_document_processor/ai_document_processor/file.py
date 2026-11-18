@@ -198,6 +198,7 @@ def extract_pdf_doc_property_date(content):
 
 
 def extract_excel_doc_property_date(content):
+    wb = None
     try:
         import io
         import openpyxl
@@ -210,6 +211,9 @@ def extract_excel_doc_property_date(content):
                 return to_naive_datetime(props.modified)
     except Exception as e:
         frappe.log_error(title="Extract Excel Date Property Error", message=str(e))
+    finally:
+        if wb:
+            wb.close()
     return None
 
 

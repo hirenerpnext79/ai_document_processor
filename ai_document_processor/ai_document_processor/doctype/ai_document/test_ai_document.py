@@ -17,6 +17,12 @@ from ai_document_processor.file import (
     normalize_ai_metadata,
     to_naive_datetime,
 )
+from ai_document_processor.ai_document_processor.utils import (
+    extract_csv_text,
+    extract_xlsx_text,
+    is_xls_content,
+    is_xlsx_content,
+)
 import frappe
 
 
@@ -158,3 +164,45 @@ class TestAIDocument(unittest.TestCase):
         dt = extract_openxml_doc_property_date(bio.getvalue())
         self.assertIsNotNone(dt)
         self.assertIsNone(dt.tzinfo)
+
+    def test_extract_xlsx_text_clean_csv_output(self):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Query Report"
+        ws.append(["name", "voucher_no"])
+        ws.append(["TRC260000782", "TRNYF262701664"])
+        bio = io.BytesIO()
+        wb.save(bio)
+        raw_bytes = bio.getvalue()
+
+        self.assertTrue(is_xlsx_content(raw_bytes))
+        self.assertFalse(is_xls_content(raw_bytes))
+
+        extracted = extract_xlsx_text(raw_bytes)
+        self.assertEqual(
+            extracted,
+            "=== Sheet: Query Report ===\nname,voucher_no\nTRC260000782,TRNYF262701664",
+        )
+        self.assertNotIn("\r", extracted)
+
+    def test_extract_xlsx_text_formula_fallback(self):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Calc"
+        ws["A1"] = "=1+1"
+        bio = io.BytesIO()
+        wb.save(bio)
+
+        extracted = extract_xlsx_text(bio.getvalue())
+        self.assertIn("=== Sheet: Calc ===", extracted)
+        self.assertIn("=1+1", extracted)
+
+    def test_extract_csv_text_rejects_binary_xlsx(self):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["col1"])
+        bio = io.BytesIO()
+        wb.save(bio)
+
+        with self.assertRaises(frappe.ValidationError):
+            extract_csv_text(bio.getvalue())
