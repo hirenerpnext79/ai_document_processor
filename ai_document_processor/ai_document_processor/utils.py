@@ -10,7 +10,7 @@ from frappe import _
 
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif", ".jfif", ".gif")
 EXCEL_EXTENSIONS = (".xlsx", ".xls", ".xlsm", ".csv")
-WORD_EXTENSIONS = (".docx",)
+WORD_EXTENSIONS = (".docx", ".doc", ".rtf")
 PPT_EXTENSIONS = (".pptx",)
 TEXT_EXTENSIONS = (".txt", ".md", ".json", ".xml", ".log")
 
@@ -37,6 +37,9 @@ MIME_TO_EXTENSION = {
     "text/csv": ".csv",
     "application/csv": ".csv",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/msword": ".doc",
+    "application/rtf": ".rtf",
+    "text/rtf": ".rtf",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
     "text/plain": ".txt",
     "application/json": ".json",
@@ -230,10 +233,24 @@ def get_file_content_with_meta(file_url):
                 }
                 return response.content, meta
 
+        file_doc = None
         if frappe.db.exists("File", {"file_url": file_url}):
             file_doc = frappe.get_doc("File", {"file_url": file_url})
+        elif frappe.db.exists("File", file_url):
+            file_doc = frappe.get_doc("File", file_url)
+
+        if file_doc:
+            try:
+                full_path = file_doc.get_full_path()
+                if full_path and os.path.exists(full_path) and os.path.isfile(full_path):
+                    with open(full_path, "rb") as f:
+                        return f.read(), {"file_name": file_doc.file_name or ""}
+            except Exception:
+                pass
             content = file_doc.get_content()
             if content:
+                if isinstance(content, str):
+                    content = content.encode("utf-8", errors="surrogateescape")
                 return content, {"file_name": file_doc.file_name or ""}
 
         clean_path = str(file_url).lstrip("/")
@@ -299,6 +316,8 @@ def detect_extension_from_bytes(content):
             pass
     if is_xls_content(content):
         return ".xls"
+    if content.lstrip().startswith(b"{\\rtf"):
+        return ".rtf"
     return ""
 
 
@@ -357,6 +376,9 @@ def extract_pdf_text(file_url, content=None):
     if not content:
         frappe.throw(_("File not found or empty: {0}").format(file_url))
 
+    if isinstance(content, str):
+        content = content.encode("utf-8", errors="surrogateescape")
+
     try:
         import fitz
     except ImportError as e:
@@ -387,6 +409,9 @@ def extract_image_text(file_url, content=None):
     content = content if content is not None else get_file_content(file_url)
     if not content:
         frappe.throw(_("File not found or empty: {0}").format(file_url))
+
+    if isinstance(content, str):
+        content = content.encode("utf-8", errors="surrogateescape")
 
     try:
         from PIL import Image
@@ -580,6 +605,107 @@ def extract_docx_text(content):
         frappe.throw(_("Failed to extract text from Word document: {0}").format(str(e)))
 
 
+def extract_rtf_text(raw_bytes):
+    try:
+        if isinstance(raw_bytes, bytes):
+            rtf_text = raw_bytes.decode("latin-1", errors="replace")
+        else:
+            rtf_text = str(raw_bytes)
+
+        pattern = re.compile(r"\\([a-z]{1,32})(-?\d+)? ?|\\\'([0-9a-f]{2})|\\([^a-z])|([{}])|[\r\n]+|(.)", re.I)
+        destinations_to_skip = {
+            "fonttbl", "colortbl", "stylesheet", "info", "pict", "header", "footer",
+            "themedata", "colorscheme", "datastore", "xmlopen", "latentstyles",
+        }
+        stack = []
+        ignorable = False
+        out = []
+
+        for match in pattern.finditer(rtf_text):
+            word, arg, hex_code, char, brace, raw_char = match.groups()
+            if brace:
+                if brace == "{":
+                    stack.append(ignorable)
+                elif brace == "}":
+                    if stack:
+                        ignorable = stack.pop()
+            elif hex_code:
+                if not ignorable:
+                    try:
+                        out.append(bytes.fromhex(hex_code).decode("cp1252", errors="replace"))
+                    except Exception:
+                        pass
+            elif char:
+                if not ignorable:
+                    if char in ("{", "}", "\\"):
+                        out.append(char)
+                    elif char == "~":
+                        out.append(" ")
+                    elif char in ("-", "_"):
+                        out.append("-")
+                if char == "*":
+                    ignorable = True
+            elif word:
+                word = word.lower()
+                if word in ("par", "line", "row"):
+                    if not ignorable:
+                        out.append("\n")
+                elif word in ("tab", "cell"):
+                    if not ignorable:
+                        out.append("\t")
+                elif word == "u":
+                    if not ignorable and arg:
+                        code = int(arg)
+                        if code < 0:
+                            code += 65536
+                        out.append(chr(code))
+                elif word in destinations_to_skip:
+                    ignorable = True
+            elif raw_char:
+                if not ignorable:
+                    out.append(raw_char)
+
+        text = "".join(out)
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n\s*\n", "\n\n", text)
+        result = text.strip()
+        if not result:
+            frappe.throw(_("No readable text could be extracted from RTF document."))
+        return result
+    except frappe.ValidationError:
+        raise
+    except Exception as error:
+        frappe.log_error(title="RTF Extraction Failed", message=str(error))
+        frappe.throw(_("Failed to extract text from RTF: {0}").format(str(error)))
+
+
+def extract_word_text(content, ext=None):
+    if isinstance(content, str):
+        content = content.encode("utf-8", errors="surrogateescape")
+
+    if content.lstrip().startswith(b"{\\rtf") or ext == ".rtf":
+        return extract_rtf_text(content)
+
+    if content.startswith((b"PK\x03\x04", b"PK\x05\x06")):
+        return extract_docx_text(content)
+
+    if content.lstrip().startswith((b"<html", b"<!DOCTYPE", b"<!doctype")):
+        from frappe.utils import strip_html
+        return strip_html(content.decode("utf-8", errors="replace")).strip()
+
+    try:
+        return extract_docx_text(content)
+    except Exception:
+        pass
+
+    try:
+        return extract_rtf_text(content)
+    except Exception:
+        pass
+
+    return extract_plain_text(content)
+
+
 def extract_pptx_text(content):
     try:
         slides_text = []
@@ -630,6 +756,9 @@ def extract_document_text(file_url, document_type=None, file_name=None, content=
     if not content:
         frappe.throw(_("File not found or empty: {0}").format(file_url))
 
+    if isinstance(content, str):
+        content = content.encode("utf-8", errors="surrogateescape")
+
     resolved_name = file_name or meta.get("file_name")
     ext = detect_file_extension(
         file_url=file_url,
@@ -649,7 +778,7 @@ def extract_document_text(file_url, document_type=None, file_name=None, content=
     if doc_type == "Excel":
         return extract_excel_text(file_url, content=content, ext=ext)
     if doc_type == "Word":
-        return extract_docx_text(content)
+        return extract_word_text(content, ext=ext)
     if doc_type == "Presentation":
         return extract_pptx_text(content)
     if doc_type == "Text":

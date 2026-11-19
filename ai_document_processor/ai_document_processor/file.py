@@ -186,6 +186,8 @@ def parse_pdf_date_property(date_str):
 
 def extract_pdf_doc_property_date(content):
     try:
+        if isinstance(content, str):
+            content = content.encode("utf-8", errors="surrogateescape")
         import fitz
         doc = fitz.open(stream=content, filetype="pdf")
         meta = doc.metadata or {}
@@ -203,6 +205,8 @@ def extract_pdf_doc_property_date(content):
 def extract_excel_doc_property_date(content):
     wb = None
     try:
+        if isinstance(content, str):
+            content = content.encode("utf-8", errors="surrogateescape")
         import io
         import openpyxl
         wb = openpyxl.load_workbook(filename=io.BytesIO(content), read_only=True)
@@ -237,6 +241,8 @@ def parse_image_exif_date(date_val):
 
 def extract_image_doc_property_date(content):
     try:
+        if isinstance(content, str):
+            content = content.encode("utf-8", errors="surrogateescape")
         import io
         from PIL import Image
 
